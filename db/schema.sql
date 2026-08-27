@@ -1,11 +1,3 @@
--- ============================================================
--- ZakaPro — Schéma PostgreSQL (Neon DB)
--- À exécuter une seule fois dans la console SQL Neon :
---   https://console.neon.tech → votre projet → SQL Editor
--- Toutes les tables métier portent user_id → isolation stricte
--- des données par compte marchand (WHERE user_id = $1).
--- ============================================================
-
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ---------- Utilisateurs & authentification ----------

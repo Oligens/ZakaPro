@@ -7,7 +7,8 @@
    Sécurité : aucune clé n'est exposée au client.
    ============================================================ */
 
-import { Pool } from "@neondatabase/serverless";
+import { neonConfig, Pool } from "@neondatabase/serverless";
+import ws from "ws";
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "zakapro_dev_secret_change_me_in_production_0123456789abcdef";
@@ -28,6 +29,8 @@ function cleanDbUrl(url) {
 }
 
 const DB_URL = cleanDbUrl(process.env.DATABASE_URL);
+
+neonConfig.webSocketConstructor = ws;
 
 /** null si DATABASE_URL est absente — les routes répondent 503 clair. */
 export const pool = DB_URL ? new Pool({ connectionString: DB_URL, max: 3 }) : null;
