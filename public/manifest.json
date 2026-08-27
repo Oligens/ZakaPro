@@ -1,0 +1,59 @@
+{
+  "name": "ZakaPro - Passerelle Mobile Money",
+  "short_name": "ZakaPro",
+  "description": "Passerelle de paiement haïtienne : MonCash, Natcash, abonnements premium, webhooks signés et écouteur SMS temps réel avec alarme de livraison.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#090D16",
+  "theme_color": "#090D16",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["finance", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tableau de bord",
+      "short_name": "Dashboard",
+      "description": "Solde, transactions et statistiques de vos applications",
+      "url": "/#/apps",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Écouteur SMS",
+      "short_name": "SMS",
+      "description": "Surveillance MonCash & Natcash en temps réel",
+      "url": "/#/sms-listener",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Livraisons urgentes",
+      "short_name": "Livraisons",
+      "description": "File d'attente des alertes de livraison",
+      "url": "/#/deliveries",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}

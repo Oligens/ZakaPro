@@ -1,0 +1,17 @@
+# Dépendances & builds
+node_modules/
+.next/
+dist/
+build/
+.vercel/
+
+# ⚠ SECRETS — ne jamais committer
+.env
+.env.local
+.env.*.local
+
+# Logs & caches
+*.log
+npm-debug.log*
+.DS_Store
+.cache/
