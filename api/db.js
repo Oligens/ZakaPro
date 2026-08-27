@@ -99,13 +99,37 @@ export default async function handler(req, res) {
         const { rows } = await pool.query(`SELECT * FROM ${table} WHERE user_id = $1 ${order}`, [userId]);
         db[key] = rows.map(TABLES[key].map);
       }
-      const settings = await pool.query("SELECT * FROM merchant_settings WHERE user_id = $1", [userId]);
-      const s = settings.rows[0];
-      db.settings = s
-        ? { alarmEnabled: s.alarm_enabled, volume: s.volume, monitoring: s.monitoring, urgency: s.urgency, webhookUrl: s.webhook_url || "", secret: s.secret }
-        : null;
-      const counters = await pool.query("SELECT COUNT(*)::int AS c FROM webhook_events WHERE user_id = $1", [userId]);
-      db.webhookCount = counters.rows[0]?.c ?? 0;
+      
+      /* Récupération des paramètres marchand — table optionnelle */
+      let settings = null;
+      try {
+        const settingsResult = await pool.query("SELECT * FROM merchant_settings WHERE user_id = $1", [userId]);
+        const s = settingsResult.rows[0];
+        if (s) {
+          settings = { 
+            alarmEnabled: s.alarm_enabled, 
+            volume: s.volume, 
+            monitoring: s.monitoring, 
+            urgency: s.urgency, 
+            webhookUrl: s.webhook_url || "", 
+            secret: s.secret 
+          };
+        }
+      } catch (settingsErr) {
+        console.warn("[zakapro:db:settings] Table merchant_settings non disponible:", settingsErr.message);
+        // La table n'existe pas encore — on continue sans les paramètres
+      }
+      db.settings = settings;
+      
+      /* Compteur d'événements webhook — table optionnelle */
+      try {
+        const counters = await pool.query("SELECT COUNT(*)::int AS c FROM webhook_events WHERE user_id = $1", [userId]);
+        db.webhookCount = counters.rows[0]?.c ?? 0;
+      } catch (counterErr) {
+        console.warn("[zakapro:db:webhook] Table webhook_events non disponible:", counterErr.message);
+        db.webhookCount = 0;
+      }
+      
       return sendJson(res, 200, db);
     }
 
@@ -122,13 +146,18 @@ export default async function handler(req, res) {
         }
         if (body.settings) {
           const st = body.settings;
-          await client.query(
-            `INSERT INTO merchant_settings (user_id, alarm_enabled, volume, monitoring, urgency, webhook_url, secret)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (user_id)
-             DO UPDATE SET alarm_enabled = $2, volume = $3, monitoring = $4, urgency = $5, webhook_url = $6, secret = $7`,
-            [userId, Boolean(st.alarmEnabled), Number(st.volume) || 70, Boolean(st.monitoring), String(st.urgency || "haute"), String(st.webhookUrl || ""), String(st.secret || "")]
-          );
+          try {
+            await client.query(
+              `INSERT INTO merchant_settings (user_id, alarm_enabled, volume, monitoring, urgency, webhook_url, secret)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (user_id)
+               DO UPDATE SET alarm_enabled = $2, volume = $3, monitoring = $4, urgency = $5, webhook_url = $6, secret = $7`,
+              [userId, Boolean(st.alarmEnabled), Number(st.volume) || 70, Boolean(st.monitoring), String(st.urgency || "haute"), String(st.webhookUrl || ""), String(st.secret || "")]
+            );
+          } catch (settingsErr) {
+            console.warn("[zakapro:db:settings:write] Table merchant_settings non disponible pour écriture:", settingsErr.message);
+            // On continue sans sauvegarder les paramètres — la synchro des autres données réussira
+          }
         }
         await client.query("COMMIT");
         return sendJson(res, 200, { ok: true, rev: Number(body.rev) || 0 });
@@ -142,7 +171,17 @@ export default async function handler(req, res) {
 
     return sendJson(res, 405, { error: "Méthode non autorisée" });
   } catch (err) {
-    console.error("[zakapro:db]", err);
-    return sendJson(res, 500, { error: "Erreur serveur — réessayez." });
+    console.error("[zakapro:db]", err.message);
+    // Message d'erreur détaillé pour le débogage Vercel
+    const isTableMissing = err.message && (
+      err.message.includes("relation") && err.message.includes("does not exist")
+    );
+    return sendJson(res, 500, { 
+      error: isTableMissing 
+        ? `Table base de données manquante : ${err.message}. Exécutez le script SQL de migration sur Neon.` 
+        : "Erreur serveur — réessayez.",
+      code: isTableMissing ? "missing_table" : "server",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined
+    });
   }
 }
