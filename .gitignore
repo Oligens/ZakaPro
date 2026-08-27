@@ -1,17 +1,36 @@
-# Dépendances & builds
-node_modules/
-.next/
-dist/
-build/
-.vercel/
+```gitignore
+# Compiled and build artifacts
+*.pyc
+__pycache__/
 
-# ⚠ SECRETS — ne jamais committer
+# Dependencies
+node_modules/
+venv/
+.venv/
 .env
 .env.local
-.env.*.local
+.env.*
 
-# Logs & caches
+# Editors
+.vscode/
+.idea/
+
+# Logs and temp files
 *.log
-npm-debug.log*
+*.tmp
+*.swp
+
+# System files
 .DS_Store
-.cache/
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Build directories
+dist/
+build/
+target/
+```

@@ -30,7 +30,15 @@ function cleanDbUrl(url) {
 
 const DB_URL = cleanDbUrl(process.env.DATABASE_URL);
 
-neonConfig.webSocketConstructor = ws;
+/* 
+ * Configuration CRITIQUE pour Vercel Serverless :
+ * neonConfig est une classe (getter), pas un objet simple.
+ * Il faut modifier defaults.webSocketConstructor directement.
+ * Voir: https://github.com/neondatabase/serverless
+ */
+if (typeof neonConfig !== 'undefined') {
+  neonConfig.defaults.webSocketConstructor = ws;
+}
 
 /** null si DATABASE_URL est absente — les routes répondent 503 clair. */
 export const pool = DB_URL ? new Pool({ connectionString: DB_URL, max: 3 }) : null;
