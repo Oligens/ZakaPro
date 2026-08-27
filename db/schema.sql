@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS users (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Migration idempotente pour une table users créée par une version antérieure.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_expires TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users (verification_token);
 
 -- ---------- Applications du marchand ----------
