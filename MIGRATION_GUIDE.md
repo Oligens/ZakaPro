@@ -108,7 +108,7 @@ curl -X GET https://zakapro.vercel.app/api/auth/me \
 
 1. **DATABASE_URL** doit être configurée dans Vercel → Settings → Environment Variables
 2. **JWT_SECRET** doit être un secret fort (min 32 caractères)
-3. **RESEND_API_KEY** est requis pour l'envoi d'emails de vérification
+3. **EMAIL_USER** et **EMAIL_PASS** sont requis pour l'envoi d'emails de vérification via SMTP Gmail
 4. Les migrations sont **idempotentes** (peuvent être exécutées plusieurs fois sans danger)
 
 ---

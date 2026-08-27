@@ -119,8 +119,8 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [resending, setResending] = useState(false);
-  const [resent, setResent] = useState(false);
+  const [sendingAgain, setSendingAgain] = useState(false);
+  const [sentAgain, setSentAgain] = useState(false);
   const [shake, setShake] = useState(0);
 
   useEffect(() => {
@@ -154,15 +154,15 @@ export function LoginPage() {
     }
   };
 
-  const resend = async () => {
-    setResending(true);
+  const sendAgain = async () => {
+    setSendingAgain(true);
     try {
-      await auth.resendVerification(email);
-      setResent(true);
+      await auth.sendVerification(email);
+      setSentAgain(true);
     } catch (err) {
       setError((err as ApiError).message);
     } finally {
-      setResending(false);
+      setSendingAgain(false);
     }
   };
 
@@ -173,8 +173,8 @@ export function LoginPage() {
           <div className="animate-rise mb-4 rounded-lg border px-3.5 py-3 text-xs font-bold leading-relaxed" style={{ borderColor: "#EC489955", background: "#EC489912", color: "#EC4899" }}>
             {error}
             {errorCode === "unverified" && (
-              <button type="button" onClick={resend} disabled={resending} className="mt-2 block cursor-pointer font-extrabold underline underline-offset-2 disabled:opacity-50">
-                {resent ? "Email renvoyé — vérifiez votre boîte" : resending ? "Envoi en cours…" : "Renvoyer l'email de vérification"}
+              <button type="button" onClick={sendAgain} disabled={sendingAgain} className="mt-2 block cursor-pointer font-extrabold underline underline-offset-2 disabled:opacity-50">
+                {sentAgain ? "Email renvoyé — vérifiez votre boîte" : sendingAgain ? "Envoi en cours…" : "Renvoyer l'email de vérification"}
               </button>
             )}
           </div>
@@ -225,8 +225,8 @@ export function RegisterPage() {
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [resent, setResent] = useState(false);
+  const [sendingAgain, setSendingAgain] = useState(false);
+  const [sentAgain, setSentAgain] = useState(false);
   const [shake, setShake] = useState(0);
 
   useEffect(() => {
@@ -275,18 +275,18 @@ export function RegisterPage() {
             <button
               type="button"
               onClick={async () => {
-                setResending(true);
+                setSendingAgain(true);
                 try {
-                  await auth.resendVerification(email);
-                  setResent(true);
+                  await auth.sendVerification(email);
+                  setSentAgain(true);
                 } finally {
-                  setResending(false);
+                  setSendingAgain(false);
                 }
               }}
-              disabled={resending}
+              disabled={sendingAgain}
               className="cursor-pointer rounded-lg border border-edge2 bg-panel2 px-4 py-2.5 text-xs font-bold text-fog transition-colors hover:border-gold/50 hover:text-gold disabled:opacity-50"
             >
-              {resent ? "Email renvoyé" : resending ? "Envoi en cours…" : "Renvoyer l'email"}
+              {sentAgain ? "Email renvoyé" : sendingAgain ? "Envoi en cours…" : "Renvoyer l'email"}
             </button>
             <Link to={PATHS.login} className="text-xs font-extrabold text-gold hover:underline">
               J'ai confirmé — me connecter
@@ -298,7 +298,7 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthShell title="Créer un compte marchand" sub="Inscription gratuite — un e-mail de vérification vous sera envoyé via Resend.">
+    <AuthShell title="Créer un compte marchand" sub="Inscription gratuite — un e-mail de vérification vous sera envoyé.">
       <form key={shake} onSubmit={submit} className={shake > 0 ? "animate-shake" : ""} noValidate>
         {errors.form && (
           <div className="animate-rise mb-4 rounded-lg border px-3.5 py-3 text-xs font-bold" style={{ borderColor: "#EC489955", background: "#EC489912", color: "#EC4899" }}>

@@ -92,8 +92,8 @@ Allez sur **Vercel → Votre Projet → Settings → Environment Variables** et 
 ```bash
 DATABASE_URL=postgresql://user:password@ep-xxx-yyy.region.neon.tech/dbname?sslmode=require
 JWT_SECRET=votre_secret_jwt_aleatoire_minimum_32_caracteres
-RESEND_API_KEY=re_xxx (optionnel, pour emails de vérification)
-EMAIL_FROM=ZakaPro <onboarding@resend.dev>
+EMAIL_USER=votre-adresse@gmail.com
+EMAIL_PASS=mot_de_passe_d_application_google
 APP_URL=https://votre-domaine.vercel.app (optionnel)
 ```
 

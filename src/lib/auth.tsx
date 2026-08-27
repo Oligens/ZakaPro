@@ -1,8 +1,8 @@
 /* ============================================================
-   ZakaPro — Authentification (Neon PostgreSQL + Resend)
+  ZakaPro — Authentification (Neon PostgreSQL + SMTP Gmail)
    · Sessions JWT (cookie httpOnly) gérées par /api/auth/*
      — bcrypt, jetons de vérification à usage unique, emails
-       de confirmation expédiés via le SDK Resend.
+      de confirmation expédiés via Nodemailer et SMTP Gmail.
    · Aucun mode démo, aucun stockage local : si l'API est
      injoignable, l'erreur est affichée explicitement.
    ============================================================ */
@@ -31,7 +31,7 @@ interface AuthCtx {
   user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  resendVerification: (email: string) => Promise<void>;
+  sendVerification: (email: string) => Promise<void>;
   verify: (token: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
@@ -113,8 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await call("register", { name, email, password });
   }, []);
 
-  const resendVerification = useCallback(async (email: string) => {
-    await call("resend", { email });
+  const sendVerification = useCallback(async (email: string) => {
+    await call("send-verification", { email });
   }, []);
 
   const verify = useCallback(async (token: string): Promise<AuthUser> => {
@@ -138,8 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, user, login, register, resendVerification, verify, logout }),
-    [status, user, login, register, resendVerification, verify, logout]
+    () => ({ status, user, login, register, sendVerification, verify, logout }),
+    [status, user, login, register, sendVerification, verify, logout]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

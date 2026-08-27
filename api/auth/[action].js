@@ -1,21 +1,20 @@
 /* ============================================================
    ZakaPro — Authentification (Vercel Serverless)
-   Actions : register · login · verify · resend · me · logout
+  Actions : register · login · verify · send-verification · me · logout
    · bcrypt (12 rounds) pour les mots de passe
-   · Jeton de vérification à usage unique (24 h) envoyé via Resend
+    · Jeton de vérification à usage unique (24 h) envoyé via SMTP Gmail
    · Session JWT HS256 en cookie httpOnly
-   · Robustesse : chaque étape (Neon, Resend) est isolée dans un
+    · Robustesse : chaque étape (Neon, SMTP) est isolée dans un
      try/catch et retourne { success:false, error } + code HTTP
      approprié — la fonction ne plante jamais en 500 brut.
    ============================================================ */
 
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import {
   pool,
   dbReady,
-  resendReady,
   readBody,
   sendJson,
   setAuthCookie,
@@ -24,34 +23,6 @@ import {
   appUrl,
   EMAIL_RE,
 } from "../_lib.js";
-
-/**
- * Adresse d'expédition pour Resend.
- * IMPORTANT : Utilise exclusivement le domaine de test Resend si EMAIL_FROM n'est pas définie.
- * Ne JAMAIS utiliser une adresse Gmail personnelle avec Resend sans vérifier le domaine.
- * @see https://resend.com/docs/send-with-api
- */
-const FROM_EMAIL = (() => {
-  const envFrom = process.env.EMAIL_FROM;
-  
-  // Si EMAIL_FROM est définie, on l'utilise
-  if (envFrom && envFrom.trim() !== "") {
-    const trimmed = envFrom.trim();
-    
-    // Validation : rejeter explicitement les adresses Gmail/non vérifiées
-    if (trimmed.includes("@gmail.com") || trimmed.includes("@yahoo.com") || trimmed.includes("@hotmail.com")) {
-      console.error("[zakapro:config] EMAIL_FROM invalide détectée :", trimmed);
-      console.error("[zakapro:config] Utilisez uniquement 'onboarding@resend.dev' ou un domaine vérifié sur Resend.");
-      // Fallback sécurisé vers le domaine de test Resend
-      return "ZakaPro <onboarding@resend.dev>";
-    }
-    
-    return trimmed;
-  }
-  
-  // Fallback par défaut : domaine de test officiel Resend (aucune configuration requise)
-  return "ZakaPro <onboarding@resend.dev>";
-})();
 
 function verificationEmailHtml(name, link) {
   return `
@@ -85,20 +56,24 @@ function verificationEmailHtml(name, link) {
   </div>`;
 }
 
-/** Envoi Resend isolé — lève une erreur explicite, jamais un crash. */
+/** Envoi SMTP isolé — lève une erreur explicite, jamais un crash. */
 async function sendVerificationEmail(email, name, token, req) {
-  if (!resendReady()) {
-    throw new Error("RESEND_API_KEY manquante dans les variables d'environnement Vercel.");
+  const user = String(process.env.EMAIL_USER || "").trim();
+  const password = String(process.env.EMAIL_PASS || "");
+  if (!user || !password) {
+    throw new Error("Configuration SMTP incomplète : renseignez EMAIL_USER et EMAIL_PASS.");
   }
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass: password },
+  });
   const link = `${appUrl(req)}/#/verify-email?token=${token}`;
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
+  await transporter.sendMail({
+    from: { name: "ZakaPro", address: user },
     to: email,
     subject: "ZakaPro — Confirmez votre adresse email",
     html: verificationEmailHtml(name, link),
   });
-  if (error) throw new Error(error.message || "Le service d'emails (Resend) a refusé l'envoi.");
 }
 
 function publicUser(row) {
@@ -143,7 +118,7 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       REGISTER — INSERT users + email Resend, entièrement protégé
+      REGISTER — INSERT users + email SMTP, entièrement protégé
        ============================================================ */
     if (action === "register") {
       /* Pré-vérification de la configuration (évite tout 500 brut) */
@@ -193,7 +168,7 @@ export default async function handler(req, res) {
         });
       }
 
-      /* 2) Envoi de l'e-mail de confirmation via Resend.
+      /* 2) Envoi de l'e-mail de confirmation via SMTP.
             En cas d'échec : on supprime le compte créé pour que
             l'utilisateur puisse réessayer proprement. */
       try {
@@ -206,7 +181,7 @@ export default async function handler(req, res) {
           /* nettoyage best-effort */
         }
         return sendJson(res, 502, {
-          error: `Compte non finalisé : ${err.message} Vérifiez RESEND_API_KEY / EMAIL_FROM sur Vercel, puis réessayez.`,
+          error: `Compte non finalisé : ${err.message} Vérifiez la configuration SMTP sur Vercel, puis réessayez.`,
           code: "email_failed",
         });
       }
@@ -270,8 +245,8 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ---------- resend ---------- */
-    if (action === "resend") {
+    /* ---------- send-verification ---------- */
+    if (action === "send-verification") {
       if (!dbReady()) return sendJson(res, 503, { error: "Base de données non configurée (DATABASE_URL).", code: "config" });
 
       const email = String(body.email || "").trim().toLowerCase();
@@ -288,7 +263,7 @@ export default async function handler(req, res) {
         await sendVerificationEmail(email, rows[0].name, token, req);
         return sendJson(res, 200, { ok: true });
       } catch (err) {
-        console.error("[zakapro:auth:resend]", err.message);
+        console.error("[zakapro:auth:send-verification]", err.message);
         return sendJson(res, 502, { error: `Envoi impossible : ${err.message}`, code: "email_failed" });
       }
     }

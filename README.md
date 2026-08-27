@@ -8,7 +8,7 @@ Plateforme de paiement type Stripe adaptée au marché haïtien : **MonCash**, *
 
 ## Fonctionnalités
 
-- **Authentification complète** — inscription (`bcryptjs`, 12 rounds), e-mail de vérification via **Resend**, session JWT en cookie `httpOnly` (7 j), routes protégées `/login` · `/register` · `/verify-email`.
+- **Authentification complète** — inscription (`bcryptjs`, 12 rounds), e-mail de vérification via SMTP Gmail, session JWT en cookie `httpOnly` (7 j), routes protégées `/login` · `/register` · `/verify-email`.
 - **Multi-applications** — chaque marchand crée un nombre illimité d'applications isolées, chacune avec sa paire de clés API (`app_key` publique / secrète), son tableau de bord, ses plans et ses transactions. Toutes les requêtes SQL filtrent `WHERE user_id = $1`.
 - **Hub de Paiement** — chaque plan génère un lien de checkout hébergé (`/hub/:appId/:planId`) : e-mail, téléphone +509, adresse et zone de livraison avec **frais variables +X %**.
 - **Écouteur SMS** — parseur regex des SMS MonCash/Natcash (montant HTG, ID de transaction, expéditeur +509, source), moteur `listener → parser → plans → livraison → webhook → alarme`.
@@ -22,7 +22,7 @@ Plateforme de paiement type Stripe adaptée au marché haïtien : **MonCash**, *
 | Front | React 18 + Vite + Tailwind CSS v4 · React Router v6 (flags v7) |
 | Backend | Vercel Serverless Functions (`/api/*`, ESM) |
 | Base de données | **PostgreSQL Neon** (`@neondatabase/serverless`) |
-| E-mails | **Resend SDK** |
+| E-mails | **Nodemailer + SMTP Gmail** |
 | Sécurité | `bcryptjs` · `jsonwebtoken` (HS256, cookie httpOnly) |
 
 ## Structure
@@ -30,7 +30,7 @@ Plateforme de paiement type Stripe adaptée au marché haïtien : **MonCash**, *
 ```
 api/
   _lib.js            Pool Neon (URL assainie), JWT, cookies, réponses JSON { success }
-  auth/[action].js   register · login · verify · resend · me · logout
+  auth/[action].js   register · login · verify · send-verification · me · logout
   db.js              GET/POST /api/db — données isolées par user_id
 db/schema.sql        Schéma PostgreSQL complet (à exécuter dans Neon)
 public/
@@ -47,7 +47,7 @@ deploy/export-github.sh
 
 ```bash
 npm install
-cp .env.example .env        # renseignez DATABASE_URL, RESEND_API_KEY, JWT_SECRET…
+cp .env.example .env        # renseignez DATABASE_URL, EMAIL_USER, EMAIL_PASS, JWT_SECRET…
 npx vercel dev              # frontend + fonctions /api/*
 ```
 
@@ -62,9 +62,9 @@ npx vercel dev              # frontend + fonctions /api/*
    | Variable | Description |
    |---|---|
    | `DATABASE_URL` | URL Neon (retirez `channel_binding` — géré par le driver) |
-   | `RESEND_API_KEY` | Clé `re_…` |
+  | `EMAIL_USER` | Adresse Gmail expéditrice |
+  | `EMAIL_PASS` | Mot de passe d'application Google (16 caractères) |
    | `JWT_SECRET` | `openssl rand -hex 32` |
-   | `EMAIL_FROM` | `ZakaPro <no-reply@votre-domaine.ht>` (domaine vérifié Resend) |
    | `APP_URL` | URL `*.vercel.app` attribuée |
 
 4. **Deploy**, puis exécutez `db/schema.sql` dans la console SQL de Neon.

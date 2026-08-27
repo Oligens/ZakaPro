@@ -49,10 +49,6 @@ export function dbReady() {
   return pool !== null;
 }
 
-export function resendReady() {
-  return Boolean(process.env.RESEND_API_KEY);
-}
-
 /* ---------- Cookies ---------- */
 
 function cookieAttributes() {

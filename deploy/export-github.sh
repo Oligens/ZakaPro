@@ -50,7 +50,7 @@ git branch -M main 2>/dev/null || true
 
 echo "→ Commit de l'ensemble du code…"
 git add -A
-git commit -q -m "feat: ZakaPro — passerelle Mobile Money (auth Neon/Resend, écouteur SMS, hub de paiement)" \
+git commit -q -m "feat: ZakaPro — passerelle Mobile Money (auth Neon/SMTP Gmail, écouteur SMS, hub de paiement)" \
   || echo "  (aucun changement à committer)"
 
 echo "→ Contenu prêt à être poussé :"
@@ -86,8 +86,8 @@ echo "  1. https://vercel.com/new → Import Git Repository → Oligens/ZakaPro"
 echo "  2. Framework : Vite (auto) — Build : npm run build — Output : dist"
 echo "  3. Environment Variables (obligatoires) :"
 echo "       DATABASE_URL   = postgresql://…@ep-hidden-water-aywc5qmj-pooler…/neondb?sslmode=require"
-echo "       RESEND_API_KEY = re_…"
+echo "       EMAIL_USER     = votre-adresse@gmail.com"
+echo "       EMAIL_PASS     = mot de passe d'application Google"
 echo "       JWT_SECRET     = chaîne longue aléatoire (openssl rand -hex 32)"
-echo "       EMAIL_FROM     = ZakaPro <no-reply@votre-domaine.ht>"
 echo "       APP_URL        = https://votre-projet.vercel.app (après 1er déploiement)"
 echo "  4. Deploy — puis exécutez db/schema.sql dans la console SQL de Neon."
