@@ -25,7 +25,33 @@ import {
   EMAIL_RE,
 } from "../_lib.js";
 
-const FROM_EMAIL = process.env.EMAIL_FROM || "ZakaPro <onboarding@resend.dev>";
+/**
+ * Adresse d'expédition pour Resend.
+ * IMPORTANT : Utilise exclusivement le domaine de test Resend si EMAIL_FROM n'est pas définie.
+ * Ne JAMAIS utiliser une adresse Gmail personnelle avec Resend sans vérifier le domaine.
+ * @see https://resend.com/docs/send-with-api
+ */
+const FROM_EMAIL = (() => {
+  const envFrom = process.env.EMAIL_FROM;
+  
+  // Si EMAIL_FROM est définie, on l'utilise
+  if (envFrom && envFrom.trim() !== "") {
+    const trimmed = envFrom.trim();
+    
+    // Validation : rejeter explicitement les adresses Gmail/non vérifiées
+    if (trimmed.includes("@gmail.com") || trimmed.includes("@yahoo.com") || trimmed.includes("@hotmail.com")) {
+      console.error("[zakapro:config] EMAIL_FROM invalide détectée :", trimmed);
+      console.error("[zakapro:config] Utilisez uniquement 'onboarding@resend.dev' ou un domaine vérifié sur Resend.");
+      // Fallback sécurisé vers le domaine de test Resend
+      return "ZakaPro <onboarding@resend.dev>";
+    }
+    
+    return trimmed;
+  }
+  
+  // Fallback par défaut : domaine de test officiel Resend (aucune configuration requise)
+  return "ZakaPro <onboarding@resend.dev>";
+})();
 
 function verificationEmailHtml(name, link) {
   return `
