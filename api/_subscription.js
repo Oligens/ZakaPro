@@ -29,14 +29,16 @@ export async function getSubscription(userId, client = pool) {
   );
   const user = rows[0];
   if (!user) return null;
-  const active = Boolean(user.is_lifetime) || (
+  const lifetime = Boolean(user.is_lifetime || user.lifetime_access);
+  const expiresAt = user.subscription_expires_at || user.subscription_expires;
+  const active = lifetime || (
     user.subscription_status === "active" &&
-    user.subscription_expires_at &&
-    new Date(user.subscription_expires_at).getTime() > Date.now()
+    expiresAt &&
+    new Date(expiresAt).getTime() > Date.now()
   );
   if (!active && user.subscription_status === "active") {
     await client.query(
-      `UPDATE users SET subscription_status = 'expired' WHERE id = $1 AND is_lifetime = false`,
+      `UPDATE users SET subscription_status = 'expired' WHERE id = $1 AND is_lifetime = false AND lifetime_access = false`,
       [userId]
     );
     await client.query(
@@ -44,7 +46,7 @@ export async function getSubscription(userId, client = pool) {
       [userId]
     );
   }
-  return { ...user, active };
+  return { ...user, active, is_lifetime: lifetime, subscription_expires_at: expiresAt };
 }
 
 export async function requireActiveSubscription(userId, client = pool) {
@@ -99,7 +101,7 @@ export async function activateSubscription(client, userId, plan, amount, source,
   const expirySql = duration ? `now() + interval '${duration}'` : "NULL";
   const paymentPlan = PAYMENT_PLAN_NAMES[plan];
   if (!paymentPlan) throw new Error("Plan d'abonnement invalide.");
-  await client.query(
+  const userUpdate = await client.query(
     `UPDATE users
      SET subscription_plan = $2,
          subscription_status = 'active',
@@ -110,6 +112,7 @@ export async function activateSubscription(client, userId, plan, amount, source,
      WHERE id = $1`,
     [userId, plan]
   );
+  if (!userUpdate.rowCount) throw new Error("Utilisateur introuvable : abonnement non activé.");
   await client.query(
     `UPDATE apps SET is_active = true, listener_enabled = true, webhooks_enabled = true WHERE user_id = $1`,
     [userId]
