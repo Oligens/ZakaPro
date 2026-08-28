@@ -83,8 +83,8 @@ class RemoteApi implements ZakaApi {
     }
     if (res.status === 401) throw new Error("Session expirée — reconnectez-vous.");
     assertJson(res);
-    if (!res.ok) throw new Error(`Erreur de l'API (HTTP ${res.status}) — réessayez.`);
-    const parsed = (await res.json()) as Partial<ZakaDb>;
+    const parsed = (await res.json()) as Partial<ZakaDb> & { error?: string };
+    if (!res.ok) throw new Error(parsed.error ?? `Erreur de l'API (HTTP ${res.status}) — réessayez.`);
     return { ...EMPTY_DB, ...parsed, settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) } };
   }
 

@@ -61,6 +61,42 @@ const TABLES = {
 };
 
 const tableName = (key) => TABLES[key].table || key;
+const REQUIRED_TABLES = Object.keys(TABLES).map(tableName);
+
+async function checkSchema() {
+  const { rows: tableRows } = await pool.query(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+    [REQUIRED_TABLES]
+  );
+  const available = new Set(tableRows.map((row) => row.table_name));
+  const missing = REQUIRED_TABLES.filter((table) => !available.has(table));
+  const presentTables = REQUIRED_TABLES.filter((table) => available.has(table));
+  if (!presentTables.length) return missing;
+
+  const { rows: columnRows } = await pool.query(
+    `SELECT table_name, column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+    [presentTables]
+  );
+  const columnsByTable = new Map();
+  for (const row of columnRows) {
+    if (!columnsByTable.has(row.table_name)) columnsByTable.set(row.table_name, new Set());
+    columnsByTable.get(row.table_name).add(row.column_name);
+  }
+  for (const [key, definition] of Object.entries(TABLES)) {
+    const table = tableName(key);
+    if (!available.has(table)) continue;
+    const requiredColumns = ["user_id", ...definition.cols];
+    const columns = columnsByTable.get(table) || new Set();
+    for (const column of requiredColumns) {
+      if (!columns.has(column)) missing.push(`${table}.${column}`);
+    }
+  }
+  return missing;
+}
 
 /** DELETE + INSERT d'une collection, paramétré, dans le client de transaction. */
 async function syncCollection(client, userId, key, rows) {
@@ -90,6 +126,16 @@ export default async function handler(req, res) {
   const userId = session.sub;
 
   try {
+    const missingTables = await checkSchema();
+    if (missingTables.length) {
+      console.error("[zakapro:db:schema] Tables manquantes:", missingTables.join(", "));
+      return sendJson(res, 503, {
+        error: "Schéma de base de données incomplet : exécutez db/schema.sql dans la base Neon utilisée par Vercel.",
+        code: "schema_missing",
+        missingTables,
+      });
+    }
+
     /* ---------- GET : chargement isolé par user_id ---------- */
     if (req.method === "GET") {
       const db = { rev: 0, webhookCount: 0 };
