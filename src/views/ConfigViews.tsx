@@ -127,6 +127,45 @@ function PromoCodeForm() {
   );
 }
 
+function SubscriptionPaymentInfo() {
+  const [adminPayment, setAdminPayment] = useState({
+    moncashPhone: "50944617600",
+    natcashPhone: "50940243434",
+    merchantName: "Cleef O. JOSEPH",
+  });
+
+  useEffect(() => {
+    void fetch("/api/subscribe", { credentials: "include" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.adminPayment) setAdminPayment(data.adminPayment);
+      })
+      .catch(() => {});
+  }, []);
+
+  const moncash = `+${adminPayment.moncashPhone.replace(/\D/g, "")}`;
+  const natcash = `+${adminPayment.natcashPhone.replace(/\D/g, "")}`;
+
+  return (
+    <Section icon={IconPhone} title="Paiement de l'abonnement ZakaPro" sub="Activez votre accès mensuel ou annuel par MonCash ou Natcash.">
+      <div className="rounded-lg border border-gold/30 bg-gold/8 p-3.5">
+        <p className="text-[12px] font-bold leading-relaxed text-snow">Envoyez exactement <span className="text-gold">250 HTG</span> pour 1 mois ou <span className="text-gold">2500 HTG</span> pour 1 an.</p>
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between gap-3 rounded-md border border-edge bg-panel2 px-3 py-2">
+            <span className="text-xs font-bold text-fog">MonCash · {adminPayment.merchantName}</span>
+            <span className="flex items-center gap-2 font-mono text-xs font-extrabold text-snow"><span>{moncash}</span><CopyBtn text={moncash} label="" className="px-1.5 py-1" /></span>
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-md border border-edge bg-panel2 px-3 py-2">
+            <span className="text-xs font-bold text-fog">Natcash · {adminPayment.merchantName}</span>
+            <span className="flex items-center gap-2 font-mono text-xs font-extrabold text-snow"><span>{natcash}</span><CopyBtn text={natcash} label="" className="px-1.5 py-1" /></span>
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-fog2">Le système écoutera automatiquement le SMS et validera l'abonnement si le nom et le numéro correspondent. Vous pouvez aussi entrer un code promo ci-dessous.</p>
+      </div>
+    </Section>
+  );
+}
+
 /* ================= /settings ================= */
 
 export function SettingsView() {
@@ -156,6 +195,7 @@ export function SettingsView() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
+          <SubscriptionPaymentInfo />
           <WalletIdentity />
           <PromoCodeForm />
           <Section icon={IconRadio} title="Écouteur SMS" sub="Service d'arrière-plan — commun à toutes vos applications">

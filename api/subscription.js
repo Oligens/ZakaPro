@@ -10,6 +10,11 @@ export default async function handler(req, res) {
       const subscription = await getSubscription(session.sub);
       if (!subscription) return sendJson(res, 404, { error: "Compte introuvable" });
       return sendJson(res, 200, {
+        adminPayment: {
+          moncashPhone: process.env.ADMIN_MONCASH_PHONE || "50944617600",
+          natcashPhone: process.env.ADMIN_NATCASH_PHONE || "50940243434",
+          merchantName: process.env.ADMIN_MERCHANT_NAME || "Cleef O. JOSEPH",
+        },
         subscription: {
           plan: subscription.subscription_plan,
           status: subscription.active ? "active" : subscription.subscription_status,
