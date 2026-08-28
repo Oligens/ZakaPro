@@ -1,6 +1,7 @@
 import { pool } from "./_lib.js";
 
 export const PLAN_PRICES = Object.freeze({ monthly: 250, yearly: 2500, lifetime: 0 });
+const PAYMENT_PLAN_NAMES = Object.freeze({ monthly: "mensuel", yearly: "annuel", lifetime: "vie" });
 
 export function normalizePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -96,6 +97,8 @@ export async function writeSmsLog(values, client = pool) {
 export async function activateSubscription(client, userId, plan, amount, source, reference, senderName, senderPhone) {
   const duration = planDuration(plan);
   const expirySql = duration ? `now() + interval '${duration}'` : "NULL";
+  const paymentPlan = PAYMENT_PLAN_NAMES[plan];
+  if (!paymentPlan) throw new Error("Plan d'abonnement invalide.");
   await client.query(
     `UPDATE users
      SET subscription_plan = $2,
@@ -114,6 +117,6 @@ export async function activateSubscription(client, userId, plan, amount, source,
   await client.query(
     `INSERT INTO subscription_payments (user_id, plan, amount, source, reference, sender_name, sender_phone)
      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [userId, plan, amount, source, reference, senderName, senderPhone]
+    [userId, paymentPlan, amount, source, reference, senderName, senderPhone]
   );
 }
