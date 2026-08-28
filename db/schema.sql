@@ -25,6 +25,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_plan TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS lifetime_access BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_lifetime BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users (verification_token);
 
@@ -43,26 +45,38 @@ CREATE TABLE IF NOT EXISTS subscription_payments (
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS promo_codes (
-  code              TEXT PRIMARY KEY,
-  plan              TEXT NOT NULL CHECK (plan IN ('mensuel', 'annuel', 'vie')),
-  uses_remaining    INT NOT NULL DEFAULT 1 CHECK (uses_remaining >= 0),
-  expires_at        TIMESTAMPTZ,
-  used_at           TIMESTAMPTZ,
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code              TEXT NOT NULL UNIQUE,
+  duration_type     TEXT NOT NULL CHECK (duration_type IN ('monthly', 'yearly', 'lifetime')),
+  is_used           BOOLEAN NOT NULL DEFAULT FALSE,
   used_by           UUID REFERENCES users(id) ON DELETE SET NULL,
+  used_at           TIMESTAMPTZ,
+  expires_at        TIMESTAMPTZ,
+  plan              TEXT,
+  uses_remaining    INT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Migration non destructive depuis l'ancien format plan/uses_remaining.
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS duration_type TEXT;
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS is_used BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS used_by UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ;
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS plan TEXT;
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS uses_remaining INT DEFAULT 1;
+UPDATE promo_codes SET duration_type = CASE plan WHEN 'mensuel' THEN 'monthly' WHEN 'annuel' THEN 'yearly' WHEN 'vie' THEN 'lifetime' END WHERE duration_type IS NULL;
+UPDATE promo_codes SET is_used = (uses_remaining <= 0) WHERE uses_remaining IS NOT NULL;
+ALTER TABLE promo_codes ALTER COLUMN duration_type SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes (code);
+
 -- ---------- Codes promo initiaux ----------
-INSERT INTO promo_codes (code, plan, uses_remaining)
-VALUES ('ZAKA-MONTH-2026', 'mensuel', 1)
-ON CONFLICT (code) DO NOTHING;
-
-INSERT INTO promo_codes (code, plan, uses_remaining)
-VALUES ('ZAKA-YEAR-VIP', 'annuel', 1)
-ON CONFLICT (code) DO NOTHING;
-
-INSERT INTO promo_codes (code, plan, uses_remaining)
-VALUES ('ZAKA-LIFETIME-FREE', 'vie', 1)
+INSERT INTO promo_codes (code, duration_type, plan, is_used, uses_remaining)
+VALUES
+  ('ZAKA-MONTH-2026', 'monthly', 'mensuel', FALSE, 1),
+  ('ZAKA-YEAR-VIP', 'yearly', 'annuel', FALSE, 1),
+  ('ZAKA-LIFETIME-FREE', 'lifetime', 'vie', FALSE, 1)
 ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS subscription_sms_logs (

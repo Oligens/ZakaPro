@@ -1,6 +1,6 @@
 import { pool } from "./_lib.js";
 
-export const PLAN_PRICES = Object.freeze({ mensuel: 250, annuel: 2500, vie: 0 });
+export const PLAN_PRICES = Object.freeze({ monthly: 250, yearly: 2500, lifetime: 0 });
 
 export function normalizePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -21,21 +21,21 @@ export function samePhone(left, right) {
 
 export async function getSubscription(userId, client = pool) {
   const { rows } = await client.query(
-    `SELECT id, subscription_plan, subscription_status, subscription_expires, lifetime_access,
+    `SELECT id, subscription_plan, subscription_status, subscription_expires_at, is_lifetime,
             moncash_name, moncash_phone, natcash_name, natcash_phone
      FROM users WHERE id = $1`,
     [userId]
   );
   const user = rows[0];
   if (!user) return null;
-  const active = Boolean(user.lifetime_access) || (
+  const active = Boolean(user.is_lifetime) || (
     user.subscription_status === "active" &&
-    user.subscription_expires &&
-    new Date(user.subscription_expires).getTime() > Date.now()
+    user.subscription_expires_at &&
+    new Date(user.subscription_expires_at).getTime() > Date.now()
   );
   if (!active && user.subscription_status === "active") {
     await client.query(
-      `UPDATE users SET subscription_status = 'expired' WHERE id = $1 AND lifetime_access = false`,
+      `UPDATE users SET subscription_status = 'expired' WHERE id = $1 AND is_lifetime = false`,
       [userId]
     );
     await client.query(
@@ -57,15 +57,15 @@ export async function requireActiveSubscription(userId, client = pool) {
 }
 
 export function planDuration(plan) {
-  if (plan === "mensuel") return "1 month";
-  if (plan === "annuel") return "1 year";
+  if (plan === "monthly") return "30 days";
+  if (plan === "yearly") return "365 days";
   return null;
 }
 
 export function planFromAmount(amount) {
   const numeric = Number(amount);
-  if (numeric === PLAN_PRICES.mensuel) return "mensuel";
-  if (numeric === PLAN_PRICES.annuel) return "annuel";
+  if (numeric === PLAN_PRICES.monthly) return "monthly";
+  if (numeric === PLAN_PRICES.yearly) return "yearly";
   return null;
 }
 
@@ -100,8 +100,10 @@ export async function activateSubscription(client, userId, plan, amount, source,
     `UPDATE users
      SET subscription_plan = $2,
          subscription_status = 'active',
-         subscription_expires = ${expirySql},
-         lifetime_access = ($2 = 'vie')
+       subscription_expires_at = ${expirySql},
+       is_lifetime = ($2 = 'lifetime'),
+       subscription_expires = ${expirySql},
+       lifetime_access = ($2 = 'lifetime')
      WHERE id = $1`,
     [userId, plan]
   );

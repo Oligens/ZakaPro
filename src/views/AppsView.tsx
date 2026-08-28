@@ -206,17 +206,31 @@ function CreateAppModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (name.trim().length < 2) {
       setError("Le nom doit contenir au moins 2 caractères.");
       return;
     }
-    const app = zaka.createApp(name, color);
-    zaka.notify("Application créée", `« ${app.name} » — app_key ${app.publicKey.slice(0, 16)}…`);
-    onClose();
-    navigate(PATHS.app(app.id));
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/subscribe", { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok || !data.subscription?.active) {
+        throw new Error("Abonnement requis pour créer une application. Payez un plan ou entrez un code promo dans Paramètres.");
+      }
+      const app = zaka.createApp(name, color);
+      zaka.notify("Application créée", `« ${app.name} » — app_key ${app.publicKey.slice(0, 16)}…`);
+      onClose();
+      navigate(PATHS.app(app.id));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Vérification de l'abonnement impossible.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -253,8 +267,8 @@ function CreateAppModal({ onClose }: { onClose: () => void }) {
           <button type="button" onClick={onClose} className="flex-1 cursor-pointer rounded-xl border border-edge2 bg-panel2 py-3 text-xs font-bold text-fog transition-colors hover:text-snow">
             Annuler
           </button>
-          <button type="submit" className="flex-1 cursor-pointer rounded-xl bg-gold py-3 font-display text-xs font-bold text-ink shadow-glow transition-all hover:bg-goldsoft active:scale-[0.98]">
-            Créer & générer les clés
+          <button type="submit" disabled={busy} className="flex-1 cursor-pointer rounded-xl bg-gold py-3 font-display text-xs font-bold text-ink shadow-glow transition-all hover:bg-goldsoft active:scale-[0.98] disabled:opacity-50">
+            {busy ? "Vérification…" : "Créer & générer les clés"}
           </button>
         </div>
       </form>

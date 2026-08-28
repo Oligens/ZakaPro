@@ -89,6 +89,44 @@ function WalletIdentity() {
   );
 }
 
+function PromoCodeForm() {
+  const [code, setCode] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const redeem = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/promo", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Code promo invalide.");
+      setMessage(`Abonnement ${data.plan} activé.`);
+      setCode("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Activation impossible.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section icon={IconZap} title="Code promo" sub="Activez un abonnement mensuel, annuel ou à vie sans SMS.">
+      <form onSubmit={redeem} className="flex flex-wrap gap-2">
+        <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="ZAKA-XXXX-XXXX" className={inputCls + " min-w-[200px] flex-1 font-mono"} aria-label="Code promo" />
+        <button type="submit" disabled={busy || !code.trim()} className="cursor-pointer rounded-lg bg-gold px-4 py-3 text-xs font-extrabold text-ink disabled:opacity-50">{busy ? "Activation…" : "Activer"}</button>
+      </form>
+      {message && <p className="mt-2 text-[11px] font-bold text-fog">{message}</p>}
+    </Section>
+  );
+}
+
 /* ================= /settings ================= */
 
 export function SettingsView() {
@@ -119,6 +157,7 @@ export function SettingsView() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <WalletIdentity />
+          <PromoCodeForm />
           <Section icon={IconRadio} title="Écouteur SMS" sub="Service d'arrière-plan — commun à toutes vos applications">
             <Row label="Surveillance automatique" desc="Intercepte et analyse les SMS MonCash & Natcash en temps réel.">
               <Toggle on={settings.monitoring} onChange={zaka.setMonitoring} />

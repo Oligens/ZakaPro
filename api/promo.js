@@ -16,27 +16,25 @@ export default async function handler(req, res) {
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      `SELECT code, plan, uses_remaining, expires_at
+      `SELECT code, duration_type, is_used, expires_at
        FROM promo_codes WHERE code = $1 FOR UPDATE`,
       [code]
     );
     const promo = result.rows[0];
-    if (!promo || promo.uses_remaining < 1 || (promo.expires_at && new Date(promo.expires_at).getTime() <= Date.now())) {
+    if (!promo || promo.is_used || (promo.expires_at && new Date(promo.expires_at).getTime() <= Date.now())) {
       await client.query("ROLLBACK");
       return sendJson(res, 400, { error: "Code promo invalide, expiré ou déjà utilisé.", code: "invalid_promo" });
     }
     const reference = `PROMO-${code}-${session.sub}-${crypto.randomUUID()}`;
-    await activateSubscription(client, session.sub, promo.plan, 0, "promo", reference, null, null);
+    await activateSubscription(client, session.sub, promo.duration_type, 0, "promo", reference, null, null);
     await client.query(
       `UPDATE promo_codes
-       SET uses_remaining = uses_remaining - 1,
-           used_at = CASE WHEN uses_remaining = 1 THEN now() ELSE used_at END,
-           used_by = $2
+       SET is_used = true, used_at = now(), used_by = $2
        WHERE code = $1`,
       [code, session.sub]
     );
     await client.query("COMMIT");
-    return sendJson(res, 200, { ok: true, plan: promo.plan, message: "Abonnement activé par code promo." });
+    return sendJson(res, 200, { ok: true, plan: promo.duration_type, message: "Abonnement activé par code promo." });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("[zakapro:promo]", error.message);

@@ -13,8 +13,8 @@ export default async function handler(req, res) {
         subscription: {
           plan: subscription.subscription_plan,
           status: subscription.active ? "active" : subscription.subscription_status,
-          expiresAt: subscription.subscription_expires,
-          lifetime: Boolean(subscription.lifetime_access),
+          expiresAt: subscription.subscription_expires_at,
+          lifetime: Boolean(subscription.is_lifetime),
         },
         wallets: {
           moncashName: subscription.moncash_name || "",
