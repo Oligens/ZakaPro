@@ -17,8 +17,69 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_expires TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS moncash_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS moncash_phone TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS natcash_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS natcash_phone TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_plan TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'inactive';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS lifetime_access BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users (verification_token);
+
+-- ---------- Abonnements de la plateforme ----------
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan            TEXT NOT NULL CHECK (plan IN ('mensuel', 'annuel', 'vie')),
+  amount          NUMERIC(12,2) NOT NULL,
+  source          TEXT NOT NULL CHECK (source IN ('moncash', 'natcash', 'promo')),
+  reference       TEXT NOT NULL UNIQUE,
+  sender_name     TEXT,
+  sender_phone    TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS promo_codes (
+  code              TEXT PRIMARY KEY,
+  plan              TEXT NOT NULL CHECK (plan IN ('mensuel', 'annuel', 'vie')),
+  uses_remaining    INT NOT NULL DEFAULT 1 CHECK (uses_remaining >= 0),
+  expires_at        TIMESTAMPTZ,
+  used_at           TIMESTAMPTZ,
+  used_by           UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------- Codes promo initiaux ----------
+INSERT INTO promo_codes (code, plan, uses_remaining)
+VALUES ('ZAKA-MONTH-2026', 'mensuel', 1)
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO promo_codes (code, plan, uses_remaining)
+VALUES ('ZAKA-YEAR-VIP', 'annuel', 1)
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO promo_codes (code, plan, uses_remaining)
+VALUES ('ZAKA-LIFETIME-FREE', 'vie', 1)
+ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS subscription_sms_logs (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
+  source          TEXT,
+  raw             TEXT NOT NULL,
+  parsed_amount   NUMERIC(12,2),
+  sender_name     TEXT,
+  sender_phone    TEXT,
+  plan            TEXT,
+  accepted        BOOLEAN NOT NULL DEFAULT FALSE,
+  reason          TEXT NOT NULL,
+  reference       TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_sms_logs_user ON subscription_sms_logs (user_id, created_at DESC);
 
 -- ---------- Applications du marchand ----------
 CREATE TABLE IF NOT EXISTS apps (
@@ -31,6 +92,9 @@ CREATE TABLE IF NOT EXISTS apps (
   secret_key  TEXT NOT NULL,                       -- zk_sec_… (webhooks)
   created_at  BIGINT NOT NULL
 );
+ALTER TABLE apps ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE apps ADD COLUMN IF NOT EXISTS webhooks_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE apps ADD COLUMN IF NOT EXISTS listener_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 CREATE INDEX IF NOT EXISTS idx_apps_user ON apps (user_id);
 
 -- ---------- Plans d'abonnement / produits ----------

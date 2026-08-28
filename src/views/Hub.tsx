@@ -23,6 +23,7 @@ export default function Hub() {
   const zones = useMemo(() => (app ? zaka.zonesFor(app.id) : []), [zaka, app]);
 
   const [step, setStep] = useState<Step>("form");
+  const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -51,6 +52,7 @@ export default function Hub() {
 
   const validate = () => {
     const errs: Record<string, string> = {};
+    if (customerName.trim().length < 2) errs.customerName = "Nom du compte MonCash/Natcash requis.";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errs.email = "Adresse email invalide.";
     if (phone.replace(/\D/g, "").length < 8) errs.phone = "Numéro de téléphone requis (8 chiffres min).";
     if (plan.delivery) {
@@ -67,12 +69,13 @@ export default function Hub() {
     const phoneNum = phone.replace(/\D/g, "").replace(/^(\d{4})(\d{4})$/, "$1 $2");
     const raw =
       m === "moncash"
-        ? `MonCash: Ou resevwa ${fmtNum(total, 2)} HTG soti nan +509 ${phoneNum}. Peman: ${plan.name}. REF: ${ref}. Balans ou: 15 420,00 HTG. *800#`
-        : `NatCash - peman konfime. ${fmtNum(total, 2)} HTG resevwa de +509 ${phoneNum} pou "${plan.name}". Referans: ${ref}. Mèsi!`;
+        ? `MonCash: Ou resevwa ${fmtNum(total, 2)} HTG soti nan ${customerName} +509 ${phoneNum}. Peman: ${plan.name}. REF: ${ref}. Balans ou: 15 420,00 HTG. *800#`
+        : `NatCash - peman konfime. ${fmtNum(total, 2)} HTG resevwa de ${customerName} +509 ${phoneNum} pou "${plan.name}". Referans: ${ref}. Mèsi!`;
 
     window.setTimeout(() => {
       zaka.commitSms(raw, {
         email,
+        customerName: customerName.trim(),
         appId: app.id,
         planId: plan.id,
         delivery: plan.delivery,
@@ -90,6 +93,7 @@ export default function Hub() {
 
   const reset = () => {
     setStep("form");
+    setCustomerName("");
     setEmail("");
     setPhone("");
     setAddress("");
@@ -153,6 +157,12 @@ export default function Hub() {
 
         {step === "form" && (
           <div className="mt-4 space-y-3.5">
+            <div>
+              <label className={labelCls} htmlFor="hub-customer-name">Nom du compte MonCash/Natcash</label>
+              <input id="hub-customer-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nom exactement affiché dans le portefeuille" className={inputCls} autoComplete="name" />
+              <p className="mt-1 text-[11px] leading-relaxed text-fog2">Le nom et le numéro doivent être strictement identiques à ceux du portefeuille pour valider instantanément le paiement.</p>
+              {errors.customerName && <p className="mt-1 text-[11px] font-bold" style={{ color: "#EC4899" }}>{errors.customerName}</p>}
+            </div>
             <div>
               <label className={labelCls} htmlFor="hub-email">Votre email (compte à activer)</label>
               <input id="hub-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@exemple.ht" className={inputCls} />

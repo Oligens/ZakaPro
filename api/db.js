@@ -7,6 +7,7 @@
    ============================================================ */
 
 import { pool, dbReady, requireAuth, readBody, sendJson } from "./_lib.js";
+import { requireActiveSubscription } from "./_subscription.js";
 
 /* ---------- Schéma des collections ↔ tables ---------- */
 
@@ -182,6 +183,7 @@ export default async function handler(req, res) {
     /* ---------- POST : synchronisation transactionnelle ---------- */
     if (req.method === "POST") {
       const body = await readBody(req);
+      if (Array.isArray(body.apps)) await requireActiveSubscription(userId);
       const client = await pool.connect();
       try {
         await client.query("BEGIN");

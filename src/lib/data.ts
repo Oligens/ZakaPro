@@ -158,6 +158,7 @@ export interface ZakaSettings {
 /** Session de paiement liée à un SMS (hub, simulation…). */
 export interface CommitSession {
   email?: string;
+  customerName?: string;
   delivery?: boolean;
   type?: string;
   appId?: string;

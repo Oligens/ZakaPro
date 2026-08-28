@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useZaka } from "../lib/store";
@@ -6,7 +6,7 @@ import { PATHS } from "../lib/data";
 import { playSuccess } from "../lib/engine";
 import { CopyBtn, Reveal, SectionHead, Toggle, inputCls, labelCls } from "../components/ui";
 import { PlansInner } from "./PlansInner";
-import { IconBell, IconEye, IconGrid, IconKey, IconRadio, IconRefresh, IconShield, IconVolume, IconZap } from "../components/icons";
+import { IconBell, IconEye, IconGrid, IconKey, IconPhone, IconRadio, IconRefresh, IconShield, IconVolume, IconZap } from "../components/icons";
 
 function Section({ icon: Icon, title, sub, children }: { icon: typeof IconBell; title: string; sub: string; children: ReactNode }) {
   return (
@@ -39,6 +39,56 @@ function Row({ label, desc, children }: { label: string; desc: string; children:
   );
 }
 
+function WalletIdentity() {
+  const [wallets, setWallets] = useState({ moncashName: "", moncashPhone: "", natcashName: "", natcashPhone: "" });
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/subscription", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setWallets(data.wallets ?? wallets))
+      .catch(() => setStatus("Profil indisponible pour le moment."));
+  }, []);
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setStatus(null);
+    try {
+      const response = await fetch("/api/subscription", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallets }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Enregistrement impossible.");
+      setStatus("Profil portefeuille enregistré.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Enregistrement impossible.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section icon={IconPhone} title="Profil d'activation" sub="Ces informations sont comparées strictement aux SMS MonCash et Natcash.">
+      <form onSubmit={save} className="space-y-3">
+        {(["moncashName", "moncashPhone", "natcashName", "natcashPhone"] as const).map((field) => (
+          <div key={field}>
+            <label className={labelCls} htmlFor={field}>{field.includes("Name") ? `Nom ${field.startsWith("moncash") ? "MonCash" : "Natcash"}` : `Numéro ${field.startsWith("moncash") ? "MonCash" : "Natcash"}`}</label>
+            <input id={field} value={wallets[field]} onChange={(event) => setWallets((current) => ({ ...current, [field]: event.target.value }))} className={inputCls} placeholder={field.includes("Name") ? "Nom exact du portefeuille" : "+509 0000 0000"} />
+          </div>
+        ))}
+        <p className="text-[11px] leading-relaxed text-fog2">Le nom et le numéro doivent correspondre exactement au portefeuille qui envoie le paiement d'abonnement.</p>
+        <button type="submit" disabled={busy} className="w-full cursor-pointer rounded-lg bg-gold py-3 text-xs font-extrabold text-ink disabled:opacity-50">{busy ? "Enregistrement…" : "Enregistrer le profil"}</button>
+        {status && <p className="text-[11px] font-bold text-fog">{status}</p>}
+      </form>
+    </Section>
+  );
+}
+
 /* ================= /settings ================= */
 
 export function SettingsView() {
@@ -68,6 +118,7 @@ export function SettingsView() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
+          <WalletIdentity />
           <Section icon={IconRadio} title="Écouteur SMS" sub="Service d'arrière-plan — commun à toutes vos applications">
             <Row label="Surveillance automatique" desc="Intercepte et analyse les SMS MonCash & Natcash en temps réel.">
               <Toggle on={settings.monitoring} onChange={zaka.setMonitoring} />
