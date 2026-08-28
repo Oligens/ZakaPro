@@ -2,6 +2,7 @@ import { pool } from "./_lib.js";
 
 export const PLAN_PRICES = Object.freeze({ monthly: 250, yearly: 2500, lifetime: 0 });
 const PAYMENT_PLAN_NAMES = Object.freeze({ monthly: "mensuel", yearly: "annuel", lifetime: "vie" });
+const PLAN_ALIASES = Object.freeze({ monthly: "monthly", mensuel: "monthly", yearly: "yearly", annuel: "yearly", lifetime: "lifetime", vie: "lifetime" });
 
 export function normalizePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -60,9 +61,13 @@ export async function requireActiveSubscription(userId, client = pool) {
 }
 
 export function planDuration(plan) {
-  if (plan === "monthly") return "30 days";
-  if (plan === "yearly") return "365 days";
+  if (plan === "monthly") return "1 month";
+  if (plan === "yearly") return "1 year";
   return null;
+}
+
+export function normalizePlan(plan) {
+  return PLAN_ALIASES[String(plan || "").toLowerCase()] || null;
 }
 
 export function planFromAmount(amount) {
@@ -97,6 +102,7 @@ export async function writeSmsLog(values, client = pool) {
 }
 
 export async function activateSubscription(client, userId, plan, amount, source, reference, senderName, senderPhone) {
+  plan = normalizePlan(plan);
   const duration = planDuration(plan);
   const expirySql = duration ? `now() + interval '${duration}'` : "NULL";
   const paymentPlan = PAYMENT_PLAN_NAMES[plan];

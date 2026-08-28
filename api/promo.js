@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { getSession, pool, dbReady, readBody, sendJson } from "./_lib.js";
-import { activateSubscription } from "./_subscription.js";
+import { activateSubscription, getSubscription } from "./_subscription.js";
 
 export default async function handler(req, res) {
   const session = getSession(req);
@@ -29,6 +29,8 @@ export default async function handler(req, res) {
     }
     const reference = `PROMO-${code}-${session.sub}-${crypto.randomUUID()}`;
     await activateSubscription(client, session.sub, durationType, 0, "promo", reference, null, null);
+    const subscription = await getSubscription(session.sub, client);
+    if (!subscription?.active) throw new Error("L'abonnement n'a pas pu être activé sur le profil utilisateur.");
     await client.query(
       `UPDATE promo_codes
          SET is_used = (COALESCE(uses_remaining, 1) <= 1),
