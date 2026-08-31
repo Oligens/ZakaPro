@@ -8,7 +8,10 @@ export default async function handler(req, res) {
   if (!dbReady()) return sendJson(res, 503, { error: "Base de données non configurée.", code: "config" });
   try {
     if (req.method !== "POST") return sendJson(res, 405, { error: "Méthode non autorisée" });
+
+    // Source de vérité côté serveur : abonnement payé/vie OU accès promo actif.
     await requireActiveSubscription(session.sub);
+
     const body = await readBody(req);
     const name = String(body.name || "").trim();
     if (name.length < 2) return sendJson(res, 400, { error: "Nom d'application requis.", code: "validation" });
@@ -26,7 +29,7 @@ export default async function handler(req, res) {
     return sendJson(res, 201, { app: rows[0] });
   } catch (error) {
     console.error("[zakapro:apps]", error.message);
-    const status = error.code === "subscription_required" ? 402 : 500;
+    const status = error.code === "subscription_required" ? 403 : 500;
     return sendJson(res, status, { error: error.message, code: error.code || "server" });
   }
 }
