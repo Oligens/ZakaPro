@@ -21,22 +21,58 @@ export function samePhone(left, right) {
   return normalizePhone(left) !== "" && normalizePhone(left) === normalizePhone(right);
 }
 
+/**
+ * Source unique de vérité pour l'accès Premium.
+ * Un accès peut venir d'un abonnement payé/vie ou d'une activation promo
+ * encore active. Le contrôle de date est effectué ici, jamais uniquement
+ * dans le frontend.
+ */
+export function hasPremiumAccess(user) {
+  const subscription = user?.subscription || user || {};
+  const expiresAt = subscription.expiresAt ?? subscription.subscription_expires_at ?? subscription.subscription_expires;
+  const subscriptionActive =
+    subscription.status === "active" || subscription.subscription_status === "active";
+  const lifetime = subscription.lifetime === true || subscription.is_lifetime === true || subscription.lifetime_access === true;
+  const paidSubscription = lifetime || (subscriptionActive && (!expiresAt || new Date(expiresAt).getTime() > Date.now()));
+
+  const promo = user?.promo;
+  const promoAccess =
+    promo?.status === "active" &&
+    (!promo.expiresAt || new Date(promo.expiresAt).getTime() > Date.now());
+
+  return paidSubscription || promoAccess;
+}
+
 export async function getSubscription(userId, client = pool) {
   const { rows } = await client.query(
-    `SELECT id, subscription_plan, subscription_status, subscription_expires_at, is_lifetime,
-            moncash_name, moncash_phone, natcash_name, natcash_phone
-     FROM users WHERE id = $1`,
+    `SELECT u.id, u.subscription_plan, u.subscription_status, u.subscription_expires_at,
+            u.subscription_expires, u.is_lifetime, u.lifetime_access,
+            u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone,
+            sp.source AS latest_subscription_source
+     FROM users u
+     LEFT JOIN LATERAL (
+       SELECT source
+       FROM subscription_payments
+       WHERE user_id = u.id
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) sp ON true
+     WHERE u.id = $1`,
     [userId]
   );
   const user = rows[0];
   if (!user) return null;
+
   const lifetime = Boolean(user.is_lifetime || user.lifetime_access);
   const expiresAt = user.subscription_expires_at || user.subscription_expires;
-  const active = lifetime || (
-    user.subscription_status === "active" &&
-    expiresAt &&
-    new Date(expiresAt).getTime() > Date.now()
-  );
+  const active = hasPremiumAccess({
+    subscription: {
+      status: user.subscription_status,
+      expiresAt,
+      lifetime,
+    },
+  });
+
   if (!active && user.subscription_status === "active") {
     await client.query(
       `UPDATE users SET subscription_status = 'expired' WHERE id = $1 AND is_lifetime = false AND lifetime_access = false`,
@@ -47,12 +83,34 @@ export async function getSubscription(userId, client = pool) {
       [userId]
     );
   }
-  return { ...user, active, is_lifetime: lifetime, subscription_expires_at: expiresAt };
+
+  const normalized = {
+    ...user,
+    active,
+    is_lifetime: lifetime,
+    subscription_expires_at: expiresAt,
+  };
+
+  return {
+    ...normalized,
+    subscription: {
+      plan: user.subscription_plan,
+      status: active ? "active" : user.subscription_status,
+      expiresAt,
+      lifetime,
+    },
+    // A promo activation is persisted as a platform subscription payment.
+    // Exposing it this way keeps the frontend aware of the actual access source
+    // without trusting the promo-code record's own redemption expiry.
+    promo: user.latest_subscription_source === "promo" && active
+      ? { status: "active", expiresAt: expiresAt || null }
+      : null,
+  };
 }
 
 export async function requireActiveSubscription(userId, client = pool) {
   const subscription = await getSubscription(userId, client);
-  if (!subscription?.active) {
+  if (!subscription || !hasPremiumAccess(subscription)) {
     const error = new Error("Abonnement requis pour créer ou gérer des applications.");
     error.code = "subscription_required";
     throw error;
