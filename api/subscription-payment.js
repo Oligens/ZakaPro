@@ -18,6 +18,13 @@ export default async function handler(req, res) {
     if (normalizedPlan !== "monthly" && normalizedPlan !== "yearly") return sendJson(res, 400, { error: "Plan invalide.", code: "validation" });
 
     const amount = PLAN_PRICES[normalizedPlan];
+    await pool.query(
+      `UPDATE subscription_payment_intents
+       SET status = 'expired'
+       WHERE user_id = $1 AND status = 'pending'`,
+      [session.sub]
+    );
+
     const { rows } = await pool.query(
       `INSERT INTO subscription_payment_intents (user_id, plan, required_amount, sender_name, sender_phone)
        VALUES ($1,$2,$3,$4,$5)
