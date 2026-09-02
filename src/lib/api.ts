@@ -1,10 +1,6 @@
 /* ============================================================
    ZakaPro — Couche d'accès aux données (Data Access Layer)
    API REST unique (/api/db) protégée par cookie JWT httpOnly.
-   Côté serveur, TOUTES les requêtes SQL filtrent par user_id
-   (WHERE user_id = $1) — isolation stricte par utilisateur.
-   Aucun stockage local, aucune donnée fictive : si l'API est
-   injoignable, l'erreur est affichée explicitement.
    ============================================================ */
 
 import {
@@ -21,7 +17,6 @@ import {
   type ZakaSettings,
 } from "./data";
 
-/** Snapshot complet de la base ZakaPro pour l'utilisateur courant. */
 export interface ZakaDb {
   rev: number;
   apps: ZakaApp[];
@@ -37,50 +32,26 @@ export interface ZakaDb {
   settings: ZakaSettings;
 }
 
-/** État initial : strictement vide. */
-export const EMPTY_DB: ZakaDb = {
-  rev: 0,
-  apps: [],
-  plans: [],
-  zones: [],
-  transactions: [],
-  subscribers: [],
-  activations: [],
-  deliveries: [],
-  smsLog: [],
-  engineLog: [],
-  webhookCount: 0,
-  settings: DEFAULT_SETTINGS,
-};
+export const EMPTY_DB: ZakaDb = { rev: 0, apps: [], plans: [], zones: [], transactions: [], subscribers: [], activations: [], deliveries: [], smsLog: [], engineLog: [], webhookCount: 0, settings: DEFAULT_SETTINGS };
 
 export interface ZakaApi {
   load(): Promise<ZakaDb>;
   save(db: ZakaDb): void;
   subscribe(cb: (db: ZakaDb) => void): () => void;
+  updateAppWebhook(appKey: string, webhookUrl: string): Promise<{ appId: string; webhookUrl: string; fallback: boolean }>;
 }
 
-async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(path, { ...init, credentials: "include" });
-}
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> { return fetch(path, { ...init, credentials: "include" }); }
 
-/** Vérifie que la réponse provient bien de l'API (JSON), pas d'une page HTML. */
 function assertJson(res: Response): void {
   const ct = res.headers.get("content-type") ?? "";
-  if (!ct.includes("application/json")) {
-    throw new Error(
-      "API de données indisponible — déployez les fonctions serverless (/api) sur Vercel pour activer Neon DB."
-    );
-  }
+  if (!ct.includes("application/json")) throw new Error("API de données indisponible — déployez les fonctions serverless (/api) sur Vercel pour activer Neon DB.");
 }
 
 class RemoteApi implements ZakaApi {
   async load(): Promise<ZakaDb> {
     let res: Response;
-    try {
-      res = await apiFetch("/api/db");
-    } catch {
-      throw new Error("API injoignable — vérifiez votre connexion réseau.");
-    }
+    try { res = await apiFetch("/api/db"); } catch { throw new Error("API injoignable — vérifiez votre connexion réseau."); }
     if (res.status === 401) throw new Error("Session expirée — reconnectez-vous.");
     assertJson(res);
     const parsed = (await res.json()) as Partial<ZakaDb> & { error?: string };
@@ -89,22 +60,23 @@ class RemoteApi implements ZakaApi {
   }
 
   save(db: ZakaDb): void {
-    void apiFetch("/api/db", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(db),
-      keepalive: true,
-    }).catch(() => {});
+    void apiFetch("/api/db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(db), keepalive: true }).catch(() => {});
   }
 
-  /** Rafraîchissement périodique : capte les paiements confirmés
-      depuis un autre onglet / par l'écouteur SMS du marchand. */
+  async updateAppWebhook(appKey: string, webhookUrl: string): Promise<{ appId: string; webhookUrl: string; fallback: boolean }> {
+    const res = await apiFetch(`/api/apps/${encodeURIComponent(appKey)}/webhook`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ webhookUrl }),
+    });
+    assertJson(res);
+    const body = (await res.json()) as { error?: string; app?: { id: string; webhookUrl: string }; fallback?: boolean };
+    if (!res.ok || !body.app) throw new Error(body.error ?? `Erreur webhook (HTTP ${res.status}).`);
+    return { appId: body.app.id, webhookUrl: body.app.webhookUrl, fallback: Boolean(body.fallback) };
+  }
+
   subscribe(cb: (db: ZakaDb) => void): () => void {
-    const t = window.setInterval(() => {
-      void this.load()
-        .then(cb)
-        .catch(() => {});
-    }, 8000);
+    const t = window.setInterval(() => { void this.load().then(cb).catch(() => {}); }, 8000);
     return () => window.clearInterval(t);
   }
 }
