@@ -1,6 +1,3 @@
-ALTER TABLE subscription_payment_intents
-  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
-
 CREATE TABLE IF NOT EXISTS subscription_payment_intents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
