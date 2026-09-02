@@ -2,10 +2,8 @@ import crypto from "crypto";
 import { dbReady, pool, readBody, sendJson } from "./_lib.js";
 import {
   activateSubscription,
-  getSubscription,
   normalizePhone,
   parseSubscriptionSms,
-  planFromAmount,
   sameIdentity,
   samePhone,
   writeSmsLog,
@@ -26,43 +24,110 @@ export default async function handler(req, res) {
   const body = await readBody(req);
   const parsed = parseSubscriptionSms(body.raw);
   const requestedSource = body.source ? String(body.source).toLowerCase() : parsed.source;
-  const plan = planFromAmount(parsed.amount);
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
-    const walletColumn = parsed.source === "moncash" ? "moncash_phone" : parsed.source === "natcash" ? "natcash_phone" : null;
-    const identityResult = walletColumn && parsed.senderPhone
-      ? await client.query(`SELECT id FROM users WHERE ${walletColumn} = $1 LIMIT 1`, [normalizePhone(parsed.senderPhone)])
-      : { rows: [] };
-    const userId = identityResult.rows[0]?.id || null;
-    const subscription = userId ? await getSubscription(userId, client) : null;
-    let reason = "";
-    if (!subscription) reason = "Compte d'activation introuvable.";
-    else if (!parsed.source || (requestedSource && parsed.source !== requestedSource)) reason = "Source MonCash/Natcash absente ou incohérente.";
-    else if (!parsed.amount || !plan) reason = "Montant invalide : seuls 250 HTG ou 2500 HTG sont acceptés.";
-    else if (!parsed.senderName || !parsed.senderPhone) reason = "Nom complet ou numéro de téléphone absent du SMS.";
-    else {
-      const expectedName = plan && parsed.source === "moncash" ? subscription.moncash_name : subscription.natcash_name;
-      const expectedPhone = parsed.source === "moncash" ? subscription.moncash_phone : subscription.natcash_phone;
-      if (!sameIdentity(parsed.senderName, expectedName) || !samePhone(parsed.senderPhone, expectedPhone)) {
-        reason = "Le montant, le nom ou le numéro ne correspond pas exactement à votre portefeuille MonCash/Natcash.";
-      }
+
+    let intent = null;
+    if (parsed.senderPhone) {
+      const result = await client.query(
+        `SELECT id, user_id, plan, required_amount, sender_name, sender_phone
+         FROM subscription_payment_intents
+         WHERE sender_phone = $1
+           AND status = 'pending'
+           AND expires_at > now()
+         ORDER BY (required_amount = $2) DESC, created_at DESC
+         LIMIT 1`,
+        [normalizePhone(parsed.senderPhone), parsed.amount ?? 0]
+      );
+      intent = result.rows[0] || null;
     }
+
+    const userId = intent?.user_id || null;
+    let reason = "";
+
+    if (!parsed.source || (requestedSource && parsed.source !== requestedSource)) {
+      reason = "Source MonCash/Natcash absente ou incohérente.";
+    } else if (!parsed.amount || parsed.amount <= 0) {
+      reason = "Montant du paiement introuvable ou invalide.";
+    } else if (!intent) {
+      reason = "Aucun paiement en attente ne correspond à ce numéro de téléphone.";
+    } else if (parsed.amount < Number(intent.required_amount)) {
+      reason = `Paiement insuffisant : ${parsed.amount} HTG reçus, ${Number(intent.required_amount)} HTG requis pour le plan sélectionné.`;
+    } else if (!parsed.senderName || !parsed.senderPhone) {
+      reason = "Nom complet ou numéro de téléphone absent du SMS.";
+    } else if (!sameIdentity(parsed.senderName, intent.sender_name) || !samePhone(parsed.senderPhone, intent.sender_phone)) {
+      reason = "Le nom ou le numéro de l'expéditeur ne correspond pas à la demande de paiement.";
+    } else if (!parsed.reference) {
+      reason = "Référence de transaction absente : impossible d'éviter un double traitement.";
+    }
+
     if (reason) {
-      await writeSmsLog([userId || null, parsed.source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, plan, false, reason, parsed.reference], client);
+      await writeSmsLog([
+        userId,
+        parsed.source,
+        parsed.raw,
+        parsed.amount,
+        parsed.senderName,
+        parsed.senderPhone,
+        intent?.plan || null,
+        false,
+        reason,
+        parsed.reference,
+      ], client);
       await client.query("COMMIT");
       return sendJson(res, 422, { error: reason, code: "activation_rejected" });
     }
-    if (!parsed.reference) {
-      const reasonWithoutReference = "Référence de transaction absente : impossible d'éviter un double traitement.";
-      await writeSmsLog([userId, parsed.source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, plan, false, reasonWithoutReference, null], client);
-      await client.query("COMMIT");
-      return sendJson(res, 422, { error: reasonWithoutReference, code: "activation_rejected" });
+
+    const duplicate = await client.query(
+      `SELECT id FROM subscription_payments WHERE reference = $1 LIMIT 1`,
+      [parsed.reference]
+    );
+    if (duplicate.rowCount) {
+      await client.query("ROLLBACK");
+      return sendJson(res, 409, { error: "Cette transaction a déjà été traitée.", code: "duplicate_transaction" });
     }
-    await activateSubscription(client, userId, plan, parsed.amount, parsed.source, parsed.reference, parsed.senderName, normalizePhone(parsed.senderPhone));
-    await writeSmsLog([userId, parsed.source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, plan, true, "Activation validée.", parsed.reference], client);
+
+    await activateSubscription(
+      client,
+      intent.user_id,
+      intent.plan,
+      parsed.amount,
+      parsed.source,
+      parsed.reference,
+      parsed.senderName,
+      normalizePhone(parsed.senderPhone)
+    );
+
+    await client.query(
+      `UPDATE subscription_payment_intents
+       SET status = 'paid', paid_reference = $1
+       WHERE id = $2 AND status = 'pending'`,
+      [parsed.reference, intent.id]
+    );
+
+    await writeSmsLog([
+      intent.user_id,
+      parsed.source,
+      parsed.raw,
+      parsed.amount,
+      parsed.senderName,
+      parsed.senderPhone,
+      intent.plan,
+      true,
+      `Activation validée : ${parsed.amount} HTG reçus pour ${Number(intent.required_amount)} HTG requis.`,
+      parsed.reference,
+    ], client);
+
     await client.query("COMMIT");
-    return sendJson(res, 200, { ok: true, plan, message: "Abonnement activé." });
+    return sendJson(res, 200, {
+      ok: true,
+      plan: intent.plan,
+      amountReceived: parsed.amount,
+      amountRequired: Number(intent.required_amount),
+      message: "Paiement confirmé. Abonnement activé automatiquement.",
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("[zakapro:sms]", error.message);
