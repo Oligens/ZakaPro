@@ -11,7 +11,8 @@ import { LoginPage, RegisterPage, VerifyEmailPage } from "./views/AuthViews";
 import AppsView from "./views/AppsView";
 import { AppShell, AppDashboard, AppTransactions, AppPlans, AppDelivery, AppIntegration } from "./views/AppArea";
 import { SmsListenerView, DeliveriesView } from "./views/Operations";
-import { SettingsView, PlansGlobalView } from "./views/ConfigViews";
+import { PlansGlobalView } from "./views/ConfigViews";
+import EnhancedSettingsView from "./views/EnhancedSettingsView";
 import Hub from "./views/Hub";
 import { AppWebhookConfig } from "./components/AppWebhookConfig";
 import type { ReactNode } from "react";
@@ -37,7 +38,7 @@ function Shell() {
   const zaka = useZaka();
   if (zaka.isLoading) return <BootSkeleton />;
   if (zaka.loadError) return <LoadError message={zaka.loadError} onRetry={zaka.retryLoad} />;
-  return <div className="min-h-screen"><Header /><main className="mx-auto max-w-6xl px-4 pb-32 pt-5"><Routes><Route path="/" element={<Navigate to="/apps" replace />} /><Route path="/apps" element={<AppsView />} /><Route path="/plans" element={<PlansGlobalView />} /><Route path="/sms-listener" element={<SmsListenerView />} /><Route path="/deliveries" element={<DeliveriesView />} /><Route path="/settings" element={<SettingsView />} /><Route path="/app/:appId" element={<AppShell />}><Route index element={<AppDashboard />} /><Route path="transactions" element={<AppTransactions />} /><Route path="plans" element={<AppPlans />} /><Route path="delivery" element={<AppDelivery />} /><Route path="integration" element={<AppIntegrationPage />} /></Route></Routes></main><BottomNav /><Toasts toasts={zaka.toasts} onDismiss={zaka.dismissToast} /></div>;
+  return <div className="min-h-screen"><Header /><main className="mx-auto max-w-6xl px-4 pb-32 pt-5"><Routes><Route path="/" element={<Navigate to="/apps" replace />} /><Route path="/apps" element={<AppsView />} /><Route path="/plans" element={<PlansGlobalView />} /><Route path="/sms-listener" element={<SmsListenerView />} /><Route path="/deliveries" element={<DeliveriesView />} /><Route path="/settings" element={<EnhancedSettingsView />} /><Route path="/app/:appId" element={<AppShell />}><Route index element={<AppDashboard />} /><Route path="transactions" element={<AppTransactions />} /><Route path="plans" element={<AppPlans />} /><Route path="delivery" element={<AppDelivery />} /><Route path="integration" element={<AppIntegrationPage />} /></Route></Routes></main><BottomNav /><Toasts toasts={zaka.toasts} onDismiss={zaka.dismissToast} /></div>;
 }
 
 function Router() {
