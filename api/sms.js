@@ -27,8 +27,8 @@ export default async function handler(req, res) {
         `SELECT id, user_id, plan, required_amount, sender_name, sender_phone
          FROM subscription_payment_intents
          WHERE sender_phone = $1 AND status = 'pending' AND expires_at > now()
-         ORDER BY (required_amount = $2) DESC, created_at DESC LIMIT 1`,
-        [normalizePhone(parsed.senderPhone), parsed.amount ?? 0]
+         ORDER BY created_at DESC LIMIT 1`,
+        [normalizePhone(parsed.senderPhone)]
       );
       intent = result.rows[0] || null;
     }
