@@ -11,18 +11,18 @@ export default async function handler(req, res) {
     const body = await readBody(req);
     const name = String(body.name || "").trim().replace(/\s+/g, " ");
     const phone = normalizePhone(body.phone);
-    const plan = normalizePlan(body.plan);
-    const amount = PLAN_PRICES[plan];
+    const normalizedPlan = normalizePlan(body.plan);
 
     if (!name || name.length < 3) return sendJson(res, 400, { error: "Veuillez saisir votre nom complet.", code: "validation" });
     if (!phone) return sendJson(res, 400, { error: "Veuillez saisir un numéro de téléphone valide.", code: "validation" });
-    if (plan !== "monthly" && plan !== "yearly") return sendJson(res, 400, { error: "Plan invalide.", code: "validation" });
+    if (normalizedPlan !== "monthly" && normalizedPlan !== "yearly") return sendJson(res, 400, { error: "Plan invalide.", code: "validation" });
 
+    const amount = PLAN_PRICES[normalizedPlan];
     const { rows } = await pool.query(
       `INSERT INTO subscription_payment_intents (user_id, plan, required_amount, sender_name, sender_phone)
        VALUES ($1,$2,$3,$4,$5)
        RETURNING id, plan, required_amount, sender_name, sender_phone, expires_at`,
-      [session.sub, plan, amount, name, phone]
+      [session.sub, normalizedPlan, amount, name, phone]
     );
 
     return sendJson(res, 200, {
