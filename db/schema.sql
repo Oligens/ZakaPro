@@ -38,8 +38,22 @@ UPDATE promo_codes SET is_used = (uses_remaining <= 0) WHERE uses_remaining IS N
 ALTER TABLE promo_codes ALTER COLUMN duration_type SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes (code);
 INSERT INTO promo_codes (code, duration_type, plan, is_used, uses_remaining) VALUES ('ZAKA-MONTH-2026', 'monthly', 'mensuel', FALSE, 1), ('ZAKA-YEAR-VIP', 'yearly', 'annuel', FALSE, 1), ('ZAKA-LIFETIME-FREE', 'lifetime', 'vie', FALSE, 1) ON CONFLICT (code) DO NOTHING;
-CREATE TABLE IF NOT EXISTS subscription_sms_logs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id) ON DELETE SET NULL, source TEXT, raw TEXT NOT NULL, parsed_amount NUMERIC(12,2), sender_name TEXT, sender_phone TEXT, plan TEXT, accepted BOOLEAN NOT NULL DEFAULT FALSE, reason TEXT NOT NULL, reference TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS subscription_sms_logs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id) ON DELETE SET NULL, raw TEXT NOT NULL, source TEXT, parsed_amount NUMERIC(12,2), sender_name TEXT, sender_phone TEXT, plan TEXT, accepted BOOLEAN NOT NULL DEFAULT FALSE, reason TEXT NOT NULL, reference TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS idx_subscription_sms_logs_user ON subscription_sms_logs (user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS subscription_payment_intents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan TEXT NOT NULL CHECK (plan IN ('monthly','yearly')),
+  required_amount NUMERIC(12,2) NOT NULL CHECK (required_amount IN (250,2500)),
+  sender_name TEXT NOT NULL,
+  sender_phone TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','rejected','expired')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '24 hours'),
+  paid_reference TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_intents_match ON subscription_payment_intents (sender_phone, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_subscription_intents_user ON subscription_payment_intents (user_id, status, created_at DESC);
 
 -- ---------- Applications du marchand ----------
 CREATE TABLE IF NOT EXISTS apps (id TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, monogram TEXT NOT NULL, color TEXT NOT NULL, public_key TEXT NOT NULL UNIQUE, secret_key TEXT NOT NULL, webhook_url TEXT, created_at BIGINT NOT NULL);
@@ -53,7 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_apps_webhook_url ON apps (user_id) WHERE webhook_
 -- ---------- Plans d'abonnement / produits ----------
 CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE, name TEXT NOT NULL, amount NUMERIC(12,2) NOT NULL, recurrence TEXT NOT NULL, delivery BOOLEAN NOT NULL DEFAULT FALSE, created_at BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_plans_user ON plans (user_id); CREATE INDEX IF NOT EXISTS idx_plans_app ON plans (app_id);
-CREATE TABLE IF NOT EXISTS zones (id TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE, name TEXT NOT NULL, fee_pct NUMERIC(6,2) NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS zones (id TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, fee_pct NUMERIC(6,2) NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_zones_user ON zones (user_id);
 CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, app_id TEXT NOT NULL, type TEXT NOT NULL, email TEXT NOT NULL, amount NUMERIC(12,2) NOT NULL, source TEXT NOT NULL, at BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'Réussi', ref TEXT NOT NULL, sender TEXT, delivery BOOLEAN NOT NULL DEFAULT FALSE);
 CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions (user_id); CREATE INDEX IF NOT EXISTS idx_tx_user_app ON transactions (user_id, app_id); CREATE INDEX IF NOT EXISTS idx_tx_at ON transactions (at DESC);
