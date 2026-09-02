@@ -3,19 +3,16 @@
    GET  /api/db  → charge l'état complet de l'utilisateur courant
    POST /api/db  → synchronise les collections (transaction SQL)
    ISOLATION : TOUTES les requêtes filtrent WHERE user_id = $1
-   (user_id extrait du JWT de session — jamais du client).
    ============================================================ */
 
 import { pool, dbReady, requireAuth, readBody, sendJson } from "./_lib.js";
 import { requireActiveSubscription } from "./_subscription.js";
 
-/* ---------- Schéma des collections ↔ tables ---------- */
-
 const TABLES = {
   apps: {
-    cols: ["id", "name", "monogram", "color", "public_key", "secret_key", "created_at"],
-    map: (r) => ({ id: r.id, name: r.name, monogram: r.monogram, color: r.color, publicKey: r.public_key, secretKey: r.secret_key, createdAt: Number(r.created_at) }),
-    unmap: (o) => [o.id, o.name, o.monogram, o.color, o.publicKey, o.secretKey, o.createdAt],
+    cols: ["id", "name", "monogram", "color", "public_key", "secret_key", "webhook_url", "created_at"],
+    map: (r) => ({ id: r.id, name: r.name, monogram: r.monogram, color: r.color, publicKey: r.public_key, secretKey: r.secret_key, webhookUrl: r.webhook_url || "", createdAt: Number(r.created_at) }),
+    unmap: (o) => [o.id, o.name, o.monogram, o.color, o.publicKey, o.secretKey, o.webhookUrl || "", o.createdAt],
   },
   plans: {
     cols: ["id", "app_id", "name", "amount", "recurrence", "delivery", "created_at"],
@@ -47,189 +44,79 @@ const TABLES = {
     map: (r) => ({ id: r.id, at: Number(r.at), appId: r.app_id, appName: r.app_name, planName: r.plan_name, customerPhone: r.customer_phone, address: r.address, zoneName: r.zone_name, baseAmount: Number(r.base_amount), feeAmount: Number(r.fee_amount), total: Number(r.total), ref: r.ref, status: r.status, deliveredAt: r.delivered_at ? Number(r.delivered_at) : undefined }),
     unmap: (o) => [o.id, o.at, o.appId, o.appName, o.planName, o.customerPhone, o.address, o.zoneName, o.baseAmount, o.feeAmount, o.total, o.ref, o.status, o.deliveredAt ?? null],
   },
-  smsLog: {
-    table: "sms_log",
-    cols: ["id", "at", "raw", "ok", "source", "amount", "ref", "sender", "webhook"],
-    map: (r) => ({ id: r.id, at: Number(r.at), raw: r.raw, ok: r.ok, source: r.source, amount: r.amount === null ? null : Number(r.amount), ref: r.ref, sender: r.sender, webhook: r.webhook }),
-    unmap: (o) => [o.id, o.at, o.raw, o.ok, o.source ?? null, o.amount ?? null, o.ref ?? null, o.sender ?? null, o.webhook],
-  },
-  engineLog: {
-    table: "engine_log",
-    cols: ["id", "at", "tag", "msg", "tone"],
-    map: (r) => ({ id: r.id, at: Number(r.at), tag: r.tag, msg: r.msg, tone: r.tone }),
-    unmap: (o) => [o.id, o.at, o.tag, o.msg, o.tone],
-  },
+  smsLog: { table: "sms_log", cols: ["id", "at", "raw", "ok", "source", "amount", "ref", "sender", "webhook"], map: (r) => ({ id: r.id, at: Number(r.at), raw: r.raw, ok: r.ok, source: r.source, amount: r.amount === null ? null : Number(r.amount), ref: r.ref, sender: r.sender, webhook: r.webhook }), unmap: (o) => [o.id, o.at, o.raw, o.ok, o.source ?? null, o.amount ?? null, o.ref ?? null, o.sender ?? null, o.webhook] },
+  engineLog: { table: "engine_log", cols: ["id", "at", "tag", "msg", "tone"], map: (r) => ({ id: r.id, at: Number(r.at), tag: r.tag, msg: r.msg, tone: r.tone }), unmap: (o) => [o.id, o.at, o.tag, o.msg, o.tone] },
 };
 
 const tableName = (key) => TABLES[key].table || key;
 const REQUIRED_TABLES = Object.keys(TABLES).map(tableName);
 
 async function checkSchema() {
-  const { rows: tableRows } = await pool.query(
-    `SELECT table_name
-     FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
-    [REQUIRED_TABLES]
-  );
+  const { rows: tableRows } = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1::text[])`, [REQUIRED_TABLES]);
   const available = new Set(tableRows.map((row) => row.table_name));
   const missing = REQUIRED_TABLES.filter((table) => !available.has(table));
   const presentTables = REQUIRED_TABLES.filter((table) => available.has(table));
   if (!presentTables.length) return missing;
-
-  const { rows: columnRows } = await pool.query(
-    `SELECT table_name, column_name
-     FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
-    [presentTables]
-  );
+  const { rows: columnRows } = await pool.query(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ANY($1::text[])`, [presentTables]);
   const columnsByTable = new Map();
-  for (const row of columnRows) {
-    if (!columnsByTable.has(row.table_name)) columnsByTable.set(row.table_name, new Set());
-    columnsByTable.get(row.table_name).add(row.column_name);
-  }
+  for (const row of columnRows) { if (!columnsByTable.has(row.table_name)) columnsByTable.set(row.table_name, new Set()); columnsByTable.get(row.table_name).add(row.column_name); }
   for (const [key, definition] of Object.entries(TABLES)) {
-    const table = tableName(key);
-    if (!available.has(table)) continue;
-    const requiredColumns = ["user_id", ...definition.cols];
-    const columns = columnsByTable.get(table) || new Set();
-    for (const column of requiredColumns) {
-      if (!columns.has(column)) missing.push(`${table}.${column}`);
-    }
+    const table = tableName(key); if (!available.has(table)) continue;
+    const requiredColumns = ["user_id", ...definition.cols]; const columns = columnsByTable.get(table) || new Set();
+    for (const column of requiredColumns) if (!columns.has(column)) missing.push(`${table}.${column}`);
   }
   return missing;
 }
 
-/** DELETE + INSERT d'une collection, paramétré, dans le client de transaction. */
 async function syncCollection(client, userId, key, rows) {
-  const def = TABLES[key];
-  const table = tableName(key);
+  const def = TABLES[key]; const table = tableName(key);
   await client.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
   if (!rows || !rows.length) return;
-
-  const cols = ["user_id", ...def.cols];
-  const placeholders = [];
-  const values = [];
-  rows.forEach((row, i) => {
-    const mapped = def.unmap(row);
-    const base = i * (def.cols.length + 1);
-    placeholders.push("(" + cols.map((_, j) => `$${base + j + 1}`).join(", ") + ")");
-    values.push(userId, ...mapped);
-  });
+  const cols = ["user_id", ...def.cols]; const placeholders = []; const values = [];
+  rows.forEach((row, i) => { const mapped = def.unmap(row); const base = i * (def.cols.length + 1); placeholders.push("(" + cols.map((_, j) => `$${base + j + 1}`).join(", ") + ")"); values.push(userId, ...mapped); });
   await client.query(`INSERT INTO ${table} (${cols.join(", ")}) VALUES ${placeholders.join(", ")}`, values);
 }
 
 export default async function handler(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-  if (!dbReady()) {
-    return sendJson(res, 503, { error: "Base de données non configurée : vérifiez DATABASE_URL sur Vercel.", code: "config" });
-  }
+  const session = requireAuth(req, res); if (!session) return;
+  if (!dbReady()) return sendJson(res, 503, { error: "Base de données non configurée : vérifiez DATABASE_URL sur Vercel.", code: "config" });
   const userId = session.sub;
-
   try {
     const missingTables = await checkSchema();
-    if (missingTables.length) {
-      console.error("[zakapro:db:schema] Tables manquantes:", missingTables.join(", "));
-      return sendJson(res, 503, {
-        error: "Schéma de base de données incomplet : exécutez db/schema.sql dans la base Neon utilisée par Vercel.",
-        code: "schema_missing",
-        missingTables,
-      });
-    }
-
-    /* ---------- GET : chargement isolé par user_id ---------- */
+    if (missingTables.length) return sendJson(res, 503, { error: "Schéma de base de données incomplet : exécutez db/schema.sql dans Neon.", code: "schema_missing", missingTables });
     if (req.method === "GET") {
       const db = { rev: 0, webhookCount: 0 };
       for (const key of Object.keys(TABLES)) {
-        const table = tableName(key);
-        const order = key === "smsLog" || key === "engineLog" || key === "transactions" ? "ORDER BY at DESC LIMIT 200" : "";
-        const { rows } = await pool.query(`SELECT * FROM ${table} WHERE user_id = $1 ${order}`, [userId]);
-        db[key] = rows.map(TABLES[key].map);
+        const table = tableName(key); const order = key === "smsLog" || key === "engineLog" || key === "transactions" ? "ORDER BY at DESC LIMIT 200" : "";
+        const { rows } = await pool.query(`SELECT * FROM ${table} WHERE user_id = $1 ${order}`, [userId]); db[key] = rows.map(TABLES[key].map);
       }
-      
-      /* Récupération des paramètres marchand — table optionnelle */
       let settings = null;
       try {
-        const settingsResult = await pool.query("SELECT * FROM merchant_settings WHERE user_id = $1", [userId]);
-        const s = settingsResult.rows[0];
-        if (s) {
-          settings = { 
-            alarmEnabled: s.alarm_enabled, 
-            volume: s.volume, 
-            monitoring: s.monitoring, 
-            urgency: s.urgency, 
-            webhookUrl: s.webhook_url || "", 
-            secret: s.secret 
-          };
-        }
-      } catch (settingsErr) {
-        console.warn("[zakapro:db:settings] Table merchant_settings non disponible:", settingsErr.message);
-        // La table n'existe pas encore — on continue sans les paramètres
-      }
+        const settingsResult = await pool.query("SELECT * FROM merchant_settings WHERE user_id = $1", [userId]); const s = settingsResult.rows[0];
+        if (s) settings = { alarmEnabled: s.alarm_enabled, volume: s.volume, monitoring: s.monitoring, urgency: s.urgency, webhookUrl: s.webhook_url || "", secret: s.secret };
+      } catch (err) { console.warn("[zakapro:db:settings]", err.message); }
       db.settings = settings;
-      
-      /* Compteur d'événements webhook — table optionnelle */
-      try {
-        const counters = await pool.query("SELECT COUNT(*)::int AS c FROM webhook_events WHERE user_id = $1", [userId]);
-        db.webhookCount = counters.rows[0]?.c ?? 0;
-      } catch (counterErr) {
-        console.warn("[zakapro:db:webhook] Table webhook_events non disponible:", counterErr.message);
-        db.webhookCount = 0;
-      }
-      
+      try { const counters = await pool.query("SELECT COUNT(*)::int AS c FROM webhook_events WHERE user_id = $1", [userId]); db.webhookCount = counters.rows[0]?.c ?? 0; } catch (err) { console.warn("[zakapro:db:webhook]", err.message); }
       return sendJson(res, 200, db);
     }
-
-    /* ---------- POST : synchronisation transactionnelle ---------- */
     if (req.method === "POST") {
       const body = await readBody(req);
       if (Array.isArray(body.apps)) await requireActiveSubscription(userId);
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        for (const key of Object.keys(TABLES)) {
-          if (Array.isArray(body[key])) {
-            await syncCollection(client, userId, key, body[key].slice(0, 300));
-          }
-        }
+        for (const key of Object.keys(TABLES)) if (Array.isArray(body[key])) await syncCollection(client, userId, key, body[key].slice(0, 300));
         if (body.settings) {
           const st = body.settings;
-          try {
-            await client.query(
-              `INSERT INTO merchant_settings (user_id, alarm_enabled, volume, monitoring, urgency, webhook_url, secret)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (user_id)
-               DO UPDATE SET alarm_enabled = $2, volume = $3, monitoring = $4, urgency = $5, webhook_url = $6, secret = $7`,
-              [userId, Boolean(st.alarmEnabled), Number(st.volume) || 70, Boolean(st.monitoring), String(st.urgency || "haute"), String(st.webhookUrl || ""), String(st.secret || "")]
-            );
-          } catch (settingsErr) {
-            console.warn("[zakapro:db:settings:write] Table merchant_settings non disponible pour écriture:", settingsErr.message);
-            // On continue sans sauvegarder les paramètres — la synchro des autres données réussira
-          }
+          try { await client.query(`INSERT INTO merchant_settings (user_id, alarm_enabled, volume, monitoring, urgency, webhook_url, secret) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (user_id) DO UPDATE SET alarm_enabled=$2, volume=$3, monitoring=$4, urgency=$5, webhook_url=$6, secret=$7`, [userId, Boolean(st.alarmEnabled), Number(st.volume) || 70, Boolean(st.monitoring), String(st.urgency || "haute"), String(st.webhookUrl || ""), String(st.secret || "")]); } catch (err) { console.warn("[zakapro:db:settings:write]", err.message); }
         }
-        await client.query("COMMIT");
-        return sendJson(res, 200, { ok: true, rev: Number(body.rev) || 0 });
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
-      }
+        await client.query("COMMIT"); return sendJson(res, 200, { ok: true, rev: Number(body.rev) || 0 });
+      } catch (err) { await client.query("ROLLBACK"); throw err; } finally { client.release(); }
     }
-
     return sendJson(res, 405, { error: "Méthode non autorisée" });
   } catch (err) {
     console.error("[zakapro:db]", err.message);
-    // Message d'erreur détaillé pour le débogage Vercel
-    const isTableMissing = err.message && (
-      err.message.includes("relation") && err.message.includes("does not exist")
-    );
-    return sendJson(res, 500, { 
-      error: isTableMissing 
-        ? `Table base de données manquante : ${err.message}. Exécutez le script SQL de migration sur Neon.` 
-        : "Erreur serveur — réessayez.",
-      code: isTableMissing ? "missing_table" : "server",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined
-    });
+    const isTableMissing = err.message && err.message.includes("relation") && err.message.includes("does not exist");
+    return sendJson(res, 500, { error: isTableMissing ? `Table base de données manquante : ${err.message}. Exécutez le script SQL de migration sur Neon.` : "Erreur serveur — réessayez.", code: isTableMissing ? "missing_table" : "server", details: process.env.NODE_ENV === "development" ? err.message : undefined });
   }
 }
