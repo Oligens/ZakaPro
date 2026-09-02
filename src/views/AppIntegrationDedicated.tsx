@@ -18,7 +18,7 @@ const SNIPPET_TABS: Array<{ key: SnippetTab; label: string }> = [
   { key: "listener", label: "Listener Android" },
 ];
 
-export function AppIntegrationDedicated() {
+export function AppIntegration() {
   const app = useOutletContext<ZakaApp>();
   const zaka = useZaka();
   const [showSecret, setShowSecret] = useState(false);
