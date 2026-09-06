@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
     const appResult = key
       ? await pool.query(`SELECT a.id, a.name, a.public_key, a.color, a.monogram, u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone FROM apps a JOIN users u ON u.id = a.user_id WHERE a.id::text = $1 OR a.public_key = $1 LIMIT 1`, [key])
-      : await pool.query(`SELECT id, name, public_key, color, monogram FROM apps WHERE id::text = $1 LIMIT 1`, [appId]);
+      : await pool.query(`SELECT a.id, a.name, a.public_key, a.color, a.monogram, u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone FROM apps a JOIN users u ON u.id = a.user_id WHERE a.id::text = $1 LIMIT 1`, [appId]);
     const app = appResult.rows[0];
     if (!app) return sendJson(res, 404, { error: "Application introuvable.", code: "app_not_found" });
 
