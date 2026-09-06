@@ -69,23 +69,19 @@ export function multiPlanButtonsSnippet(app: ZakaApp, plans: ZakaPlan[]): string
   ].join("\n");
 }
 
-export function generateCurlSnippet(app: { publicKey: string }, o: { planId?: string; amount?: number }): string {
+export function generateCurlSnippet(app: { publicKey: string }, o: { planId?: string }): string {
   const planId = o.planId || "PLAN_ID_SELECTIONNE";
-  const hasAmount = o.amount !== undefined;
-  const amountLine = hasAmount ? `,\n    "amount": ${Number(o.amount)}` : "";
-
   return "curl -X POST https://zakapro.vercel.app/api/apps/" +
     encodeURIComponent(app.publicKey) +
     "/checkout \\\n" +
     '  -H "Content-Type: application/json" \\\n' +
     "  -d '{\n" +
-    `    "plan_id": ${js(planId)}` +
-    amountLine +
-    "\n  }'";
+    `    "plan_id": ${js(planId)}\n` +
+    "  }'";
 }
 
 export function curlSnippet(app: ZakaApp, o: SnippetOpts): string {
-  return generateCurlSnippet(app, { planId: o.planId, amount: o.amount });
+  return generateCurlSnippet(app, { planId: o.planId });
 }
 
 export function webhookSnippet(_app: ZakaApp): string {
@@ -98,7 +94,7 @@ export function webhookSnippet(_app: ZakaApp): string {
     '  const expected = crypto.createHmac("sha256", process.env.ZAKAPRO_APP_SECRET).update(req.body).digest("hex");',
     '  if (!signature || signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return res.status(401).json({error:"Signature invalide"});',
     '  const event = JSON.parse(req.body.toString("utf8"));',
-    '  if (event.event === "payment.confirmed") { console.log("Paiement confirmé", event.reference, event.planId, event.amount); }',
+    '  if (event.event === "subscription.activated") { console.log("Paiement confirmé", event.reference, event.planId, event.amount); }',
     '  return res.status(200).json({received:true});',
     '});',
   ].join("\n");
