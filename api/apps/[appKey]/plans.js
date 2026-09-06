@@ -25,40 +25,29 @@ export default async function handler(req, res) {
     if (!key && !appId) return sendJson(res, 400, { error: "app_key ou app_id requis.", code: "missing_app_identifier" });
 
     const appResult = key
-      ? await pool.query(
-          `SELECT id, name, public_key FROM apps WHERE id::text = $1 OR public_key = $1 LIMIT 1`,
-          [key]
-        )
-      : await pool.query(
-          `SELECT id, name, public_key FROM apps WHERE id::text = $1 LIMIT 1`,
-          [appId]
-        );
-
+      ? await pool.query(`SELECT id, name, public_key, color, monogram FROM apps WHERE id::text = $1 OR public_key = $1 LIMIT 1`, [key])
+      : await pool.query(`SELECT id, name, public_key, color, monogram FROM apps WHERE id::text = $1 LIMIT 1`, [appId]);
     const app = appResult.rows[0];
     if (!app) return sendJson(res, 404, { error: "Application introuvable.", code: "app_not_found" });
 
-    const { rows } = await pool.query(
+    const { rows: plans } = await pool.query(
       `SELECT id, app_id, name, amount, recurrence, delivery, created_at
-       FROM plans
-       WHERE app_id = $1
-       ORDER BY created_at ASC, id ASC`,
-      [app.id]
+       FROM plans WHERE app_id = $1 ORDER BY created_at ASC, id ASC`, [app.id]
+    );
+    const { rows: zones } = await pool.query(
+      `SELECT id, app_id, name, fee_pct FROM zones WHERE app_id = $1 ORDER BY name ASC, id ASC`, [app.id]
     );
 
     return sendJson(res, 200, {
-      app: { id: app.id, name: app.name, appKey: app.public_key },
-      plans: rows.map((plan) => ({
-        id: plan.id,
-        appId: plan.app_id,
-        name: plan.name,
-        amount: Number(plan.amount),
-        recurrence: plan.recurrence,
-        delivery: Boolean(plan.delivery),
-        createdAt: Number(plan.created_at),
+      app: { id: app.id, name: app.name, appKey: app.public_key, color: app.color, monogram: app.monogram },
+      plans: plans.map((p) => ({
+        id: p.id, appId: p.app_id, name: p.name, amount: Number(p.amount),
+        recurrence: p.recurrence, delivery: Boolean(p.delivery), createdAt: Number(p.created_at),
       })),
+      zones: zones.map((z) => ({ id: z.id, appId: z.app_id, name: z.name, feePct: Number(z.fee_pct) })),
     });
   } catch (error) {
-    console.error("[zakapro:apps:plans]", error.message);
+    console.error("[zakapro:apps:plans]", error);
     return sendJson(res, 500, { error: "Impossible de charger les plans de l'application.", code: "server" });
   }
 }
