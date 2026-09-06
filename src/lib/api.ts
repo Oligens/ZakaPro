@@ -19,6 +19,10 @@ function notifyAuthExpired() {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("zakapro:auth-expired"));
 }
 
+function notifyPersistenceError(message: string, code = "save_error") {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("zakapro:persistence-error", { detail: { message, code } }));
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(path, {
     ...init,
@@ -55,18 +59,29 @@ class RemoteApi implements ZakaApi {
   save(db: ZakaDb): void {
     const generation = ++this.writeGeneration;
     this.writeQueue = this.writeQueue.then(async () => {
-      const res = await apiFetch("/api/db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(db), keepalive: true });
+      let res: Response;
+      try {
+        res = await apiFetch("/api/db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(db), keepalive: true });
+      } catch {
+        notifyPersistenceError("Impossible de joindre le serveur : vos modifications ne sont pas confirmées.", "offline");
+        throw new Error("API injoignable — sauvegarde non confirmée.");
+      }
       assertJson(res);
       const body = (await res.json()) as { error?: string; code?: string; serverRev?: number };
       if (res.status === 401) {
         notifyAuthExpired();
-        throw new Error("Session ZakaPro expirée — reconnectez-vous.");
+        notifyPersistenceError("Session ZakaPro expirée : la modification n'a pas été enregistrée. Reconnectez-vous.", "unauthorized");
+        throw new Error("Session ZakaPro expirée — sauvegarde refusée.");
       }
       if (res.status === 409 && body.code === "stale_write") {
         console.warn(`[zakapro:db:conflict:${generation}]`, body.error, { serverRev: body.serverRev, localRev: db.rev });
+        notifyPersistenceError("Une autre fenêtre a enregistré des données plus récentes. Vos modifications locales ne sont pas encore enregistrées.", "stale_write");
         return;
       }
-      if (!res.ok) throw new Error(body.error ?? `Erreur de sauvegarde (HTTP ${res.status}).`);
+      if (!res.ok) {
+        notifyPersistenceError(body.error ?? `Erreur de sauvegarde (HTTP ${res.status}).`, body.code ?? "save_error");
+        throw new Error(body.error ?? `Erreur de sauvegarde (HTTP ${res.status}).`);
+      }
     }).catch((err: unknown) => {
       console.error(`[zakapro:db:save:${generation}]`, err);
     });
@@ -78,9 +93,13 @@ class RemoteApi implements ZakaApi {
     const body = (await res.json()) as { error?: string; code?: string; app?: { id: string; webhookUrl: string }; fallback?: boolean };
     if (res.status === 401) {
       notifyAuthExpired();
+      notifyPersistenceError("Session ZakaPro expirée : le webhook n'a pas été enregistré. Reconnectez-vous.", "unauthorized");
       throw new Error("Session ZakaPro expirée — reconnectez-vous pour enregistrer le webhook.");
     }
-    if (!res.ok || !body.app) throw new Error(body.error ?? `Erreur webhook (HTTP ${res.status}).`);
+    if (!res.ok || !body.app) {
+      notifyPersistenceError(body.error ?? `Erreur webhook (HTTP ${res.status}).`, body.code ?? "webhook_error");
+      throw new Error(body.error ?? `Erreur webhook (HTTP ${res.status}).`);
+    }
     return { appId: body.app.id, webhookUrl: body.app.webhookUrl, fallback: Boolean(body.fallback) };
   }
 
