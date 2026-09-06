@@ -66,7 +66,6 @@ async function handleMerchantIntent(client, intent, parsed, source) {
      FROM apps WHERE id = $1 LIMIT 1`, [intent.app_id]
   );
   const app = appResult.rows[0];
-  const appUserId = app?.user_id || null;
   if (!app) return { status: 404, body: { error: "Application introuvable.", code: "app_not_found" }};
 
   const planResult = await client.query(
@@ -189,9 +188,10 @@ export default async function handler(req, res) {
     await client.query("BEGIN");
 
     const checkout = await client.query(
-      `SELECT cpi.*, p.name AS plan_name
+      `SELECT cpi.*, p.name AS plan_name, a.user_id AS app_user_id
        FROM checkout_payment_intents cpi
        JOIN plans p ON p.id = cpi.plan_id AND p.app_id = cpi.app_id
+       JOIN apps a ON a.id = cpi.app_id
        WHERE cpi.reference = $1
          AND cpi.customer_phone = $2
          AND cpi.status = 'pending'
@@ -204,7 +204,7 @@ export default async function handler(req, res) {
       const result = await handleMerchantIntent(client, checkout.rows[0], parsed, source);
       if (result.status >= 400) {
         await client.query(`UPDATE checkout_payment_intents SET status = 'rejected' WHERE id = $1 AND status = 'pending'`, [checkout.rows[0].id]);
-        await writeSmsLog([appUserId, source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, checkout.rows[0].plan_name, false, result.body.error, parsed.reference], client);
+        await writeSmsLog([checkout.rows[0].app_user_id, source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, checkout.rows[0].plan_name, false, result.body.error, parsed.reference], client);
         await client.query("COMMIT");
         return sendJson(res, result.status, result.body);
       }
