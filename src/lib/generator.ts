@@ -4,7 +4,7 @@ import { fmtNum, hubLink, type ZakaApp, type ZakaPlan } from "./data";
 export interface SnippetOpts { webhook: string; amount?: number; methods: Source[]; planName?: string; planId?: string; apiBase?: string; }
 const DEFAULT_WEBHOOK = "https://votre-site.ht/api/webhooks/zakapro";
 const DEFAULT_API_BASE = "https://votre-domaine-zakapro.vercel.app";
-const methodsLit = (methods: Source[]) => "[" + (methods.length ? methods.map(JSON.stringify).join(", ") : '"moncash", "natcash"') + "]";
+const methodsLit = (methods: Source[]) => "[" + (methods.length ? methods.map(JSON.stringify).join(", ") : '["moncash", "natcash"]') + "]";
 const js = (value: string) => JSON.stringify(value);
 
 /** SDK universel : tous les plans de l'application sont chargés par app_key. */
@@ -81,8 +81,8 @@ export function curlSnippet(app: ZakaApp, o: SnippetOpts): string {
     ...(o.amount === undefined ? [] : [`    "amount": ${Number(o.amount)},`]),
     '    "currency": "HTG",',
     `    "methods": ${methodsLit(o.methods)},`,
-    `    "callback_url": ${js(o.webhook || DEFAULT_WEBHOOK)}`
-    ,"  }'",
+    `    "callback_url": ${js(o.webhook || DEFAULT_WEBHOOK)}`,
+    "  }'",
   ].join("\n");
 }
 
