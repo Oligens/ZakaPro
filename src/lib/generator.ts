@@ -73,7 +73,7 @@ export function curlSnippet(app: ZakaApp, o: SnippetOpts): string {
   return [
     "# Création de session — planId dynamique",
     "curl -X POST https://api.zakapro.ht/v1/checkout \\",
-    `  -H "Authorization: Bearer ${app.secretKey.slice(0, 14)}…" \\",
+    '  -H "Authorization: Bearer YOUR_ZAKAPRO_SECRET" \\",
     '  -H "Content-Type: application/json" \\",
     "  -d '{",
     `    "app_key": ${js(app.publicKey)},`,
