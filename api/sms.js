@@ -225,9 +225,9 @@ export default async function handler(req, res) {
 
     const platform = await client.query(
       `SELECT * FROM subscription_payment_intents
-       WHERE sender_phone = $1 AND status = 'pending' AND expires_at > now()
+       WHERE reference = $1 AND sender_phone = $2 AND status = 'pending' AND expires_at > now()
        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-      [normalizePhone(parsed.senderPhone)]
+      [parsed.reference, normalizePhone(parsed.senderPhone)]
     );
     const intent = platform.rows[0];
     if (!intent) {
