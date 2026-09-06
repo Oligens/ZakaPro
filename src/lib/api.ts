@@ -19,8 +19,6 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> { r
 function assertJson(res: Response): void { const ct = res.headers.get("content-type") ?? ""; if (!ct.includes("application/json")) throw new Error("API de données indisponible — déployez les fonctions serverless (/api) sur Vercel pour activer Neon DB."); }
 
 class RemoteApi implements ZakaApi {
-  /* /api/db remplace les collections : plusieurs POST simultanés pouvaient
-     donc terminer dans le mauvais ordre et effacer un plan récent. */
   private writeQueue: Promise<void> = Promise.resolve();
   private writeGeneration = 0;
 
@@ -28,39 +26,31 @@ class RemoteApi implements ZakaApi {
     for (;;) {
       const generationAtStart = this.writeGeneration;
       await this.writeQueue;
-
       let res: Response;
       try { res = await apiFetch("/api/db"); } catch { throw new Error("API injoignable — vérifiez votre connexion réseau."); }
       if (res.status === 401) throw new Error("Session expirée — reconnectez-vous.");
       assertJson(res);
-      const parsed = (await res.json()) as Partial<ZakaDb> & { error?: string };
+      const parsed = (await res.json()) as Partial<ZakaDb> & { error?: string; serverRev?: number };
       if (!res.ok) throw new Error(parsed.error ?? `Erreur de l'API (HTTP ${res.status}) — réessayez.`);
-
-      // Si une mutation a commencé pendant le GET, le snapshot peut être obsolète.
       if (generationAtStart !== this.writeGeneration) continue;
-
       return { ...EMPTY_DB, ...parsed, settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) } };
     }
   }
 
   save(db: ZakaDb): void {
     const generation = ++this.writeGeneration;
-    this.writeQueue = this.writeQueue
-      .then(async () => {
-        const res = await apiFetch("/api/db", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(db),
-          keepalive: true,
-        });
-        assertJson(res);
-        const body = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(body.error ?? `Erreur de sauvegarde (HTTP ${res.status}).`);
-      })
-      .catch((err: unknown) => {
-        // Une erreur ne doit pas bloquer les écritures suivantes.
-        console.error(`[zakapro:db:save:${generation}]`, err);
-      });
+    this.writeQueue = this.writeQueue.then(async () => {
+      const res = await apiFetch("/api/db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(db), keepalive: true });
+      assertJson(res);
+      const body = (await res.json()) as { error?: string; code?: string; serverRev?: number };
+      if (res.status === 409 && body.code === "stale_write") {
+        console.warn(`[zakapro:db:conflict:${generation}]`, body.error, { serverRev: body.serverRev, localRev: db.rev });
+        return;
+      }
+      if (!res.ok) throw new Error(body.error ?? `Erreur de sauvegarde (HTTP ${res.status}).`);
+    }).catch((err: unknown) => {
+      console.error(`[zakapro:db:save:${generation}]`, err);
+    });
   }
 
   async updateAppWebhook(appKey: string, webhookUrl: string): Promise<{ appId: string; webhookUrl: string; fallback: boolean }> {
