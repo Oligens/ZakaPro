@@ -14,7 +14,7 @@ import { AppIntegration } from "./views/AppIntegrationDedicated";
 import { SmsListenerView, DeliveriesView } from "./views/Operations";
 import { PlansGlobalView } from "./views/ConfigViews";
 import EnhancedSettingsView from "./views/EnhancedSettingsView";
-import Hub from "./views/Hub";
+import PublicHub from "./views/PublicHub";
 import type { ReactNode } from "react";
 
 function BootSkeleton() {
@@ -36,7 +36,7 @@ function Shell() {
 }
 
 function Router() {
-  return <Routes><Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} /><Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} /><Route path="/verify-email" element={<VerifyEmailPage />} /><Route path="/hub/:appId/:planId" element={<Hub />} /><Route path="/*" element={<Protected><Shell /></Protected>} /></Routes>;
+  return <Routes><Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} /><Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} /><Route path="/verify-email" element={<VerifyEmailPage />} /><Route path="/hub/:appId/:planId" element={<PublicHub />} /><Route path="/*" element={<Protected><Shell /></Protected>} /></Routes>;
 }
 
 export default function App() {
