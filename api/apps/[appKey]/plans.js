@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     if (!key && !appId) return sendJson(res, 400, { error: "app_key ou app_id requis.", code: "missing_app_identifier" });
 
     const appResult = key
-      ? await pool.query(`SELECT id, name, public_key, color, monogram FROM apps WHERE id::text = $1 OR public_key = $1 LIMIT 1`, [key])
+      ? await pool.query(`SELECT a.id, a.name, a.public_key, a.color, a.monogram, u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone FROM apps a JOIN users u ON u.id = a.user_id WHERE id::text = $1 OR public_key = $1 LIMIT 1`, [key])
       : await pool.query(`SELECT id, name, public_key, color, monogram FROM apps WHERE id::text = $1 LIMIT 1`, [appId]);
     const app = appResult.rows[0];
     if (!app) return sendJson(res, 404, { error: "Application introuvable.", code: "app_not_found" });
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     );
 
     return sendJson(res, 200, {
-      app: { id: app.id, name: app.name, appKey: app.public_key, color: app.color, monogram: app.monogram },
+      app: { id: app.id, name: app.name, appKey: app.public_key, color: app.color, monogram: app.monogram, wallets: { moncashName: app.moncash_name || '', moncashPhone: app.moncash_phone || '', natcashName: app.natcash_name || '', natcashPhone: app.natcash_phone || '' } },
       plans: plans.map((p) => ({
         id: p.id, appId: p.app_id, name: p.name, amount: Number(p.amount),
         recurrence: p.recurrence, delivery: Boolean(p.delivery), createdAt: Number(p.created_at),
