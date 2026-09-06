@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 CREATE INDEX IF NOT EXISTS idx_plans_user ON plans (user_id);
 CREATE INDEX IF NOT EXISTS idx_plans_app ON plans (app_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_plans_app_id_id ON plans (app_id, id);
 
 -- ---------- Zones de livraison ----------
 CREATE TABLE IF NOT EXISTS zones (
@@ -365,6 +366,25 @@ CREATE TABLE IF NOT EXISTS checkout_payment_intents (
 CREATE INDEX IF NOT EXISTS idx_checkout_intents_phone_status ON checkout_payment_intents (customer_phone, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_checkout_intents_app_status ON checkout_payment_intents (app_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_checkout_intents_plan ON checkout_payment_intents (plan_id, created_at DESC);
+
+-- Isolation multi-tenant : une intention ne peut référencer
+-- qu'un plan appartenant à la même application.
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_checkout_intent_app_plan'
+      AND conrelid = 'checkout_payment_intents'::regclass
+  ) THEN
+    ALTER TABLE checkout_payment_intents
+      ADD CONSTRAINT fk_checkout_intent_app_plan
+      FOREIGN KEY (app_id, plan_id)
+      REFERENCES plans (app_id, id)
+      ON DELETE CASCADE;
+  END IF;
+END
+$;
 
 -- ============================================================
 -- FIN DU SCHÉMA
