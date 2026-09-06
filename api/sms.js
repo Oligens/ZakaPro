@@ -208,7 +208,7 @@ export default async function handler(req, res) {
         await client.query("COMMIT");
         return sendJson(res, result.status, result.body);
       }
-      await writeSmsLog([null, source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, checkout.rows[0].plan_name, true, "Checkout marchand validé avec montant strict.", parsed.reference], client);
+      await writeSmsLog([checkout.rows[0].app_user_id, source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, checkout.rows[0].plan_name, true, "Checkout marchand validé avec montant strict.", parsed.reference], client);
       await client.query("COMMIT");
 
       const webhookResult = result.webhook ? await deliverMerchantWebhook(result.webhook.app, result.webhook.payload) : null;
