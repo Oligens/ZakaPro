@@ -15,13 +15,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "zakapro_dev_secret_change_me_in_pr
 const COOKIE_NAME = "zakapro_token";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 jours
 
-/* ---------- Pool Neon (robuste aux erreurs de configuration) ---------- */
-
-/**
- * Neon ajoute parfois `channel_binding=require` à l'URL ; ce paramètre
- * n'est pas supporté par le Pool WebSocket du driver serverless et
- * provoque des erreurs de connexion → on le retire proprement.
- */
 function cleanDbUrl(url) {
   return String(url || "")
     .replace(/([?&])channel_binding=require(&|$)/g, (_m, p1, p2) => (p2 ? p1 : ""))
@@ -30,26 +23,17 @@ function cleanDbUrl(url) {
 
 const DB_URL = cleanDbUrl(process.env.DATABASE_URL);
 
-/* 
- * Configuration CRITIQUE pour Vercel Serverless avec @neondatabase/serverless v1.x
- * Le pool doit être créé avec webSocketConstructor passé directement dans les options
- * Reference: https://github.com/neondatabase/serverless/blob/main/README.md
- */
-
-/** null si DATABASE_URL est absente — les routes répondent 503 clair. */
-export const pool = DB_URL 
-  ? new Pool({ 
-      connectionString: DB_URL, 
+export const pool = DB_URL
+  ? new Pool({
+      connectionString: DB_URL,
       max: 3,
-      webSocketConstructor: ws 
-    }) 
+      webSocketConstructor: ws,
+    })
   : null;
 
 export function dbReady() {
   return pool !== null;
 }
-
-/* ---------- Cookies ---------- */
 
 function cookieAttributes() {
   const secure = process.env.VERCEL || process.env.NODE_ENV === "production" ? "Secure;" : "";
@@ -79,8 +63,6 @@ export function parseCookies(req) {
   return out;
 }
 
-/* ---------- Session ---------- */
-
 export function getSession(req) {
   try {
     const token = parseCookies(req)[COOKIE_NAME];
@@ -91,7 +73,6 @@ export function getSession(req) {
   }
 }
 
-/** Exige une session valide, sinon répond 401. Retourne le payload JWT. */
 export function requireAuth(req, res) {
   const session = getSession(req);
   if (!session) {
@@ -101,12 +82,14 @@ export function requireAuth(req, res) {
   return session;
 }
 
-/* ---------- Réponses JSON unifiées ---------- */
-
-/** Toute réponse inclut `success` — jamais de crash silencieux (500 brut). */
 export function sendJson(res, status, body) {
   res.status(status);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  // Les endpoints API sont sessionnés : aucune réponse ne doit être servie
+  // depuis un cache avec l'état d'authentification d'une autre requête.
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Vary", "Cookie");
   res.end(JSON.stringify({ success: status < 400, ...body }));
 }
 
@@ -128,14 +111,10 @@ export function readBody(req) {
   });
 }
 
-/* ---------- URL publique (liens d'e-mail) ---------- */
-
 export function appUrl(req) {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return `https://${req.headers.host || "localhost"}`;
 }
-
-/* ---------- Validation e-mail ---------- */
 
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
