@@ -39,12 +39,10 @@ export default async function handler(req, res) {
     );
 
     return sendJson(res, 200, {
+      success: true,
       app: { id: app.id, name: app.name, appKey: app.public_key, color: app.color, monogram: app.monogram, wallets: { moncashName: app.moncash_name || '', moncashPhone: app.moncash_phone || '', natcashName: app.natcash_name || '', natcashPhone: app.natcash_phone || '' } },
-      plans: plans.map((p) => ({
-        id: p.id, appId: p.app_id, name: p.name, amount: Number(p.amount),
-        recurrence: p.recurrence, delivery: Boolean(p.delivery), createdAt: Number(p.created_at),
-      })),
-      zones: zones.map((z) => ({ id: z.id, appId: z.app_id, name: z.name, feePct: Number(z.fee_pct) })),
+      plans: plans.map((p) => ({ id: p.id, appId: p.app_id, name: p.name, amount: Number(p.amount), recurrence: p.recurrence, delivery: Boolean(p.delivery), createdAt: Number(p.created_at) })),
+      zones: zones.map((z) => ({ id: z.id, appId: z.app_id, name: z.name, feePct: Number(z.fee_pct) }))
     });
   } catch (error) {
     console.error("[zakapro:apps:plans]", error);
