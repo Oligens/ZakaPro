@@ -1,8 +1,9 @@
 import type { Source } from "./engine";
 import { fmtNum, hubLink, type ZakaApp, type ZakaPlan } from "./data";
 
-export interface SnippetOpts { webhook: string; amount?: number; methods: Source[]; planName?: string; planId?: string; }
+export interface SnippetOpts { webhook: string; amount?: number; methods: Source[]; planName?: string; planId?: string; apiBase?: string; }
 const DEFAULT_WEBHOOK = "https://votre-site.ht/api/webhooks/zakapro";
+const DEFAULT_API_BASE = "https://votre-domaine-zakapro.vercel.app";
 const methodsLit = (methods: Source[]) => "[" + (methods.length ? methods.map(JSON.stringify).join(", ") : '"moncash", "natcash"') + "]";
 const js = (value: string) => JSON.stringify(value);
 
@@ -14,7 +15,8 @@ export function sdkSnippet(app: ZakaApp, o: SnippetOpts): string {
     `<script src="https://cdn.zakapro.ht/sdk/v3/zaka.min.js"></script>`,
     "<script>",
     `const ZAKAPRO_APP_KEY = ${js(app.publicKey)};`,
-    "const ZAKAPRO_PLANS_URL = `/api/apps/${encodeURIComponent(ZAKAPRO_APP_KEY)}/plans`;",
+    `const ZAKAPRO_API_BASE = ${js(o.apiBase || DEFAULT_API_BASE)};`,
+    "const ZAKAPRO_PLANS_URL = `${ZAKAPRO_API_BASE}/api/apps/${encodeURIComponent(ZAKAPRO_APP_KEY)}/plans`;",
     "const zaka = ZakaPro.init({",
     "  appKey: ZAKAPRO_APP_KEY,",
     `  webhookUrl: ${js(webhook)},`,
