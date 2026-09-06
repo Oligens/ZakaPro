@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     const planId = cleanText(body.planId, 128);
     const zoneId = cleanText(body.zoneId, 128) || null;
     const address = cleanText(body.address, 500) || null;
+    // IMPORTANT: body.amount est volontairement ignoré. Le prix vient exclusivement de PostgreSQL.
 
     if (customerName.length < 2) return sendJson(res, 400, { error: "Nom client invalide.", code: "validation" });
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(customerEmail)) return sendJson(res, 400, { error: "Email client invalide.", code: "validation" });
