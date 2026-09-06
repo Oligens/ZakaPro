@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { dbReady, pool, readBody, sendJson } from "../../../_lib.js";
+import { dbReady, pool, readBody, sendJson } from "../../_lib.js";
 
 function normalizePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -75,6 +75,7 @@ export default async function handler(req, res) {
     );
 
     return sendJson(res, 201, {
+      success: true,
       intent: rows[0],
       app: { id: app.id, name: app.name, appKey: app.public_key },
       plan: { id: plan.id, name: plan.name, amount: baseAmount, delivery: Boolean(plan.delivery) },
