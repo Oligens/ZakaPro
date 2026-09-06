@@ -5,7 +5,7 @@
 import { DEFAULT_SETTINGS, type Activation, type DeliveryAlert, type DeliveryZone, type EngineLogEntry, type SmsLogEntry, type Subscriber, type Transaction, type ZakaApp, type ZakaPlan, type ZakaSettings } from "./data";
 
 export interface ZakaDb { rev: number; apps: ZakaApp[]; plans: ZakaPlan[]; zones: DeliveryZone[]; transactions: Transaction[]; subscribers: Subscriber[]; activations: Activation[]; deliveries: DeliveryAlert[]; smsLog: SmsLogEntry[]; engineLog: EngineLogEntry[]; webhookCount: number; settings: ZakaSettings; }
-export const EMPTY_DB: ZakaDb = { rev: 0, apps: [], plans: [], zones: [], transactions: [], subscribers: [], activations: [], deliveries: [], engineLog: [], webhookCount: 0, settings: DEFAULT_SETTINGS };
+export const EMPTY_DB: ZakaDb = { rev: 0, apps: [], plans: [], zones: [], transactions: [], subscribers: [], activations: [], deliveries: [], smsLog: [], engineLog: [], webhookCount: 0, settings: DEFAULT_SETTINGS };
 
 export interface ZakaApi {
   load(): Promise<ZakaDb>;
