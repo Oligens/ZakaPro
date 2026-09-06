@@ -47,14 +47,14 @@ export function useAuth(): AuthCtx {
 const OFFLINE_MSG =
   "Serveur d'authentification injoignable — vérifiez votre connexion ou le déploiement des fonctions /api sur Vercel.";
 
-/** Appelle une action /api/auth/<action> avec le cookie de session. */
 async function call(action: string, body: Record<string, unknown>): Promise<{ user?: AuthUser }> {
   let res: Response;
   try {
     res = await fetch(`/api/auth/${action}`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
       body: JSON.stringify(body),
     });
   } catch {
@@ -76,12 +76,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
 
+  useEffect(() => {
+    const onAuthExpired = () => {
+      setUser(null);
+      setStatus("guest");
+    };
+    window.addEventListener("zakapro:auth-expired", onAuthExpired);
+    return () => window.removeEventListener("zakapro:auth-expired", onAuthExpired);
+  }, []);
+
   /* Amorçage : vérifie la session JWT existante (cookie httpOnly). */
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        });
         const ct = res.headers.get("content-type") ?? "";
         if (!ct.includes("application/json")) throw new Error("no-backend");
         const data = (await res.json()) as { user?: AuthUser };
