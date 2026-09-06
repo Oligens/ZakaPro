@@ -7,7 +7,6 @@ const DEFAULT_API_BASE = "https://votre-domaine-zakapro.vercel.app";
 const methodsLit = (methods: Source[]) => "[" + (methods.length ? methods.map(JSON.stringify).join(", ") : '"moncash", "natcash"') + "]";
 const js = (value: string) => JSON.stringify(value);
 
-/** SDK universel : tous les plans de l'application sont chargés par app_key. */
 export function sdkSnippet(app: ZakaApp, o: SnippetOpts): string {
   const webhook = o.webhook || DEFAULT_WEBHOOK;
   return [
@@ -69,24 +68,27 @@ export function hubButtonSnippet(app: ZakaApp, plan: ZakaPlan): string {
   return ["<!-- Bouton Hub ZakaPro — planId -->", `<a href="${link}" target="_blank" rel="noopener" style="display:inline-block;background:#EAB308;color:#090D16;border-radius:10px;padding:14px 26px;font-weight:800;font-family:sans-serif;text-decoration:none">`, `  Peye kounye a — ${fmtNum(plan.amount)} HTG`, "</a>", "<!-- Le Hub utilise planId : aucun montant n'est codé en dur côté validation. -->"].join("\n");
 }
 
-export function curlSnippet(app: ZakaApp, o: SnippetOpts): string {
+/** Génère un exemple cURL sans guillemets imbriqués fragiles. */
+export function generateCurlSnippet(app: { publicKey: string }, o: { planId?: string; amount?: number }): string {
+  const planId = o.planId || "PLAN_ID_SELECTIONNE";
+  const hasAmount = o.amount !== undefined;
+  const planLine = `    "plan_id": ${JSON.stringify(planId)}${hasAmount ? "," : ""}`;
+
   return [
-    "# Création de session — planId dynamique",
-    "curl -X POST https://api.zakapro.ht/v1/checkout \\",
-    '  -H "Authorization: Bearer YOUR_ZAKAPRO_SECRET" \\",
+    "curl -X POST https://zakapro.vercel.app/api/checkout/intent \\",
     '  -H "Content-Type: application/json" \\",
     "  -d '{",
-    `    "app_key": ${js(app.publicKey)},`,
-    `    "plan_id": ${js(o.planId || "PLAN_ID_SELECTIONNE")},`,
-    ...(o.amount === undefined ? [] : [`    "amount": ${Number(o.amount)},`]),
-    '    "currency": "HTG",',
-    `    "methods": ${methodsLit(o.methods)},`,
-    `    "callback_url": ${js(o.webhook || DEFAULT_WEBHOOK)}`,
+    `    "app_key": ${JSON.stringify(app.publicKey)},`,
+    planLine,
+    ...(hasAmount ? [`    "amount": ${Number(o.amount)},`] : []),
     "  }'",
   ].join("\n");
 }
 
-/** Exemple marchand : signature HMAC + validation planId/appId/montant dans PostgreSQL. */
+export function curlSnippet(app: ZakaApp, o: SnippetOpts): string {
+  return generateCurlSnippet(app, { planId: o.planId, amount: o.amount });
+}
+
 export function webhookSnippet(app: ZakaApp): string {
   return [
     "// server/webhook-zakapro.js",
