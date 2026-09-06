@@ -62,10 +62,11 @@ async function handleMerchantIntent(client, intent, parsed, source) {
   if (!source) return { status: 422, body: { error: "Source MonCash/Natcash absente.", code: "source_missing" }};
 
   const appResult = await client.query(
-    `SELECT id, name, public_key, secret_key, webhook_url
+    `SELECT id, user_id, name, public_key, secret_key, webhook_url
      FROM apps WHERE id = $1 LIMIT 1`, [intent.app_id]
   );
   const app = appResult.rows[0];
+  const appUserId = app?.user_id || null;
   if (!app) return { status: 404, body: { error: "Application introuvable.", code: "app_not_found" }};
 
   const planResult = await client.query(
@@ -203,7 +204,7 @@ export default async function handler(req, res) {
       const result = await handleMerchantIntent(client, checkout.rows[0], parsed, source);
       if (result.status >= 400) {
         await client.query(`UPDATE checkout_payment_intents SET status = 'rejected' WHERE id = $1 AND status = 'pending'`, [checkout.rows[0].id]);
-        await writeSmsLog([null, source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, checkout.rows[0].plan_name, false, result.body.error, parsed.reference], client);
+        await writeSmsLog([appUserId, source, parsed.raw, parsed.amount, parsed.senderName, parsed.senderPhone, checkout.rows[0].plan_name, false, result.body.error, parsed.reference], client);
         await client.query("COMMIT");
         return sendJson(res, result.status, result.body);
       }
