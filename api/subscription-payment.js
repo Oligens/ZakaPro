@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { getSession, pool, dbReady, readBody, sendJson } from "./_lib.js";
 import { PLAN_PRICES, normalizePhone, normalizePlan } from "./_subscription.js";
 
@@ -5,7 +6,7 @@ export default async function handler(req, res) {
   const session = getSession(req);
   if (!session) return sendJson(res, 401, { error: "Authentification requise", code: "unauthorized" });
   if (!dbReady()) return sendJson(res, 503, { error: "Base de données non configurée.", code: "config" });
-  if (req.method !== "POST") return sendJson(res, 405, { error: "Méthode non autorisée" });
+  if (req.method !== "POST") return sendJson(res, 405, { error: "Méthode non autorisée", code: "method_not_allowed" });
 
   try {
     const body = await readBody(req);
@@ -18,33 +19,31 @@ export default async function handler(req, res) {
     if (normalizedPlan !== "monthly" && normalizedPlan !== "yearly") return sendJson(res, 400, { error: "Plan invalide.", code: "validation" });
 
     const amount = PLAN_PRICES[normalizedPlan];
+    const reference = `ZKS-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+
     await pool.query(
-      `UPDATE subscription_payment_intents
-       SET status = 'expired'
-       WHERE user_id = $1 AND status = 'pending'`,
-      [session.sub]
+      `UPDATE subscription_payment_intents SET status = 'expired'
+       WHERE user_id = $1 AND status = 'pending'`, [session.sub]
     );
 
     const { rows } = await pool.query(
-      `INSERT INTO subscription_payment_intents (user_id, plan, required_amount, sender_name, sender_phone)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, plan, required_amount, sender_name, sender_phone, expires_at`,
-      [session.sub, normalizedPlan, amount, name, phone]
+      `INSERT INTO subscription_payment_intents
+       (user_id, plan, required_amount, sender_name, sender_phone, reference)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, plan, required_amount, sender_name, sender_phone, reference, expires_at`,
+      [session.sub, normalizedPlan, amount, name, phone, reference]
     );
 
-    return sendJson(res, 200, {
+    return sendJson(res, 201, {
       ok: true,
       intent: {
-        id: rows[0].id,
-        plan: rows[0].plan,
-        amount: Number(rows[0].required_amount),
-        senderName: rows[0].sender_name,
-        senderPhone: rows[0].sender_phone,
-        expiresAt: rows[0].expires_at,
+        id: rows[0].id, plan: rows[0].plan, amount: Number(rows[0].required_amount),
+        senderName: rows[0].sender_name, senderPhone: rows[0].sender_phone,
+        reference: rows[0].reference, expiresAt: rows[0].expires_at,
       },
     });
   } catch (error) {
-    console.error("[zakapro:subscription-payment]", error.message);
+    console.error("[zakapro:subscription-payment]", error);
     return sendJson(res, 500, { error: "Impossible de préparer le paiement.", code: "server" });
   }
 }
