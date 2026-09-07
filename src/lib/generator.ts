@@ -18,17 +18,68 @@ export function hubButtonSnippet(app:ZakaApp,plan:ZakaPlan):string{
 }
 
 export function multiPlanButtonsSnippet(app:ZakaApp,plans:ZakaPlan[]):string{
- const active=plans.filter(p=>Number(p.amount)>=0);
+ const active=plans.filter(p=>Number.isFinite(Number(p.amount))&&Number(p.amount)>0);
  if(!active.length)return "<!-- Aucun plan actif pour cette application. -->";
- return [`<!-- ZakaPro — ${app.name} — ${active.length} plan(s) -->`,'<div class="zakapro-plans" data-zakapro-app-key="'+app.publicKey+'">',...active.map(p=>{const href=`${DEFAULT_API_BASE}/#/hub/${encodeURIComponent(app.id)}/${encodeURIComponent(p.id)}`;return `  <a class="zakapro-plan-button" href="${href}" target="_blank" rel="noopener noreferrer" data-zakapro-app-key="${app.publicKey}" data-plan-id="${p.id}" data-amount="${Number(p.amount)}">${p.name} — ${fmtNum(p.amount)} HTG</a>`; }),"</div>","<style>",".zakapro-plans{display:grid;gap:10px}.zakapro-plan-button{display:block;padding:14px 18px;border-radius:10px;background:#EAB308;color:#090D16;text-decoration:none;font:800 14px system-ui,sans-serif;text-align:center}.zakapro-plan-button:hover{filter:brightness(1.06)}","</style>"].join("\n");
+ return [`<!-- ZakaPro — ${app.name} — ${active.length} plan(s) -->`,'<div class="zakapro-plans" data-zakapro-app-key="'+app.publicKey+'">',...active.map(p=>{const href=`${DEFAULT_API_BASE}/#/hub/${encodeURIComponent(app.id)}/${encodeURIComponent(p.id)}`;return `  <a class="zakapro-plan-button" href="${href}" target="_blank" rel="noopener noreferrer" data-zakapro-app-key="${app.publicKey}" data-plan-id="${p.id}" data-amount="${Number(p.amount)}" data-recurrence="${p.recurrence||"unique"}">${p.name} — ${fmtNum(p.amount)} HTG</a>`;}),"</div>","<style>",".zakapro-plans{display:grid;gap:10px}.zakapro-plan-button{display:block;padding:14px 18px;border-radius:10px;background:#EAB308;color:#090D16;text-decoration:none;font:800 14px system-ui,sans-serif;text-align:center}.zakapro-plan-button:hover{filter:brightness(1.06)}","</style>"].join("\n");
 }
 
 export function generateCurlSnippet(app:{publicKey:string},o:{planId?:string}):string{
  const planId=o.planId||"PLAN_ID_SELECTIONNE";
- return "curl -X POST https://zakapro.vercel.app/api/apps/"+encodeURIComponent(app.publicKey)+"/checkout \\\n"+'  -H "Content-Type: application/json" \\\n'+"  -d '{\n"+`    "plan_id": ${js(planId)}\n`+"  }'";
+ return [
+ `# Crée une intention de paiement — le prix est lu côté serveur depuis PostgreSQL`,
+ `curl -X POST https://zakapro.vercel.app/api/apps/${encodeURIComponent(app.publicKey)}/checkout \\\n`,
+ `  -H "Content-Type: application/json" \\\n`,
+ `  -d '${JSON.stringify({planId,customerName:"Jean Exemple",email:"client@example.com",phone:"37124589"},null,2)}'`
+ ].join("");
 }
 export function curlSnippet(app:ZakaApp,o:SnippetOpts):string{return generateCurlSnippet(app,{planId:o.planId});}
-export function webhookSnippet(_app:ZakaApp):string{return ["// server/webhook-zakapro.js",'import express from "express"; import crypto from "crypto";','const app = express();','app.post("/webhooks/zakapro", express.raw({type:"application/json"}), async (req,res) => {','  const signature = String(req.headers["zakapro-signature"] || "");','  const expected = crypto.createHmac("sha256", process.env.ZAKAPRO_APP_SECRET).update(req.body).digest("hex");','  if (!signature || signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return res.status(401).json({error:"Signature invalide"});','  const event = JSON.parse(req.body.toString("utf8"));','  if (event.event === "subscription.activated") { console.log("Paiement confirmé", event.reference, event.planId, event.amount); }','  return res.status(200).json({received:true});','});'].join("\n");}
-export function listenerSnippet(app:ZakaApp):string{return ["// ZakaProSmsListener.kt","class ZakaProSmsListener : BroadcastReceiver() {","  override fun onReceive(ctx: Context, intent: Intent) {",'    val pdus = intent.extras?.get("pdus") as? Array<*> ?: return',"    for (pdu in pdus) {","      val sms = SmsMessage.createFromPdu(pdu as ByteArray)","      val parsed = ZakaPro.parseSms(sms.messageBody)",`      if (parsed.isValid && parsed.appKey == ${js(app.publicKey)}) ZakaPro.triggerWebhook(parsed)`,"    }","  }","}"].join("\n");}
+
+export function webhookSnippet(app:ZakaApp):string{
+ return [
+ "// Node.js / Express — endpoint de votre application, pas l'endpoint ZakaPro",
+ "// ZakaPro envoie POST vers l'URL configurée dans le tableau de bord.",
+ 'import express from "express"; import crypto from "crypto";',
+ "const app = express();",
+ 'const WEBHOOK_SECRET = process.env.ZAKAPRO_APP_SECRET;',
+ 'app.post("/webhooks/zakapro", express.raw({type:"application/json"}), (req,res) => {',
+ '  if (!WEBHOOK_SECRET) return res.status(500).json({error:"ZAKAPRO_APP_SECRET manquant"});',
+ '  const received = String(req.headers["x-zakapro-signature"] || "");',
+ '  const expected = "sha256=" + crypto.createHmac("sha256", WEBHOOK_SECRET).update(req.body).digest("hex");',
+ '  const a=Buffer.from(received); const b=Buffer.from(expected);',
+ '  if (a.length!==b.length || !crypto.timingSafeEqual(a,b)) return res.status(401).json({error:"Signature invalide"});',
+ '  let event; try { event=JSON.parse(req.body.toString("utf8")); } catch { return res.status(400).json({error:"JSON invalide"}); }',
+ '  if (event.event === "subscription.activated") console.log("Paiement confirmé", event.reference, event.planId, event.plan, event.amount, event.method);',
+ '  return res.status(200).json({received:true});',
+ '});',
+ `// appKey attendu: ${app.publicKey}`
+ ].join("\n");
+}
+
+export function listenerSnippet(app:ZakaApp):string{
+ return [
+ "// Android — BroadcastReceiver : transmet uniquement le SMS brut au backend ZakaPro.",
+ "// IMPORTANT : ne mettez jamais la clé secrète de l'application dans l'APK.",
+ "// Configurez SMS_LISTENER_SECRET côté serveur / proxy sécurisé.",
+ "class ZakaProSmsListener : BroadcastReceiver() {",
+ "  override fun onReceive(ctx: Context, intent: Intent) {",
+ '    val bundle = intent.extras ?: return',
+ '    val pdus = bundle.get("pdus") as? Array<*> ?: return',
+ '    val format = bundle.getString("format")',
+ '    for (pdu in pdus) {',
+ '      val sms = if (format != null) SmsMessage.createFromPdu(pdu as ByteArray, format) else SmsMessage.createFromPdu(pdu as ByteArray)',
+ '      val raw = sms.messageBody ?: continue',
+ `      sendToZakaPro(ctx, raw, "${app.publicKey}")`,
+ "    }",
+ "  }",
+ "}",
+ "",
+ "// Implémentez sendToZakaPro avec votre transport HTTPS sécurisé vers :",
+ "// POST https://zakapro.vercel.app/api/sms",
+ "// Header: X-Listener-Key = secret serveur",
+ "// JSON: { \"raw\": \"<SMS brut>\" }",
+ "// Le backend ZakaPro parse MonCash/Natcash, retrouve l'intention par référence",
+ "// et valide montant + identité avant activation."
+ ].join("\n");
+}
 export async function copyText(text:string):Promise<boolean>{try{await navigator.clipboard.writeText(text);return true}catch{try{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);return true}catch{return false}}}
 export const ZAKAPRO_SDK_URL=DEFAULT_SDK_URL;
