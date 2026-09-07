@@ -21,34 +21,25 @@ export function samePhone(left, right) {
   return normalizePhone(left) !== "" && normalizePhone(left) === normalizePhone(right);
 }
 
-/**
- * Source unique de vérité pour l'accès Premium.
- * Un accès peut venir d'un abonnement payé/vie ou d'une activation promo
- * encore active. Le contrôle de date est effectué ici, jamais uniquement
- * dans le frontend.
- */
 export function hasPremiumAccess(user) {
   const subscription = user?.subscription || user || {};
   const expiresAt = subscription.expiresAt ?? subscription.subscription_expires_at ?? subscription.subscription_expires;
   const subscriptionActive = subscription.status === "active" || subscription.subscription_status === "active";
   const lifetime = subscription.lifetime === true || subscription.is_lifetime === true || subscription.lifetime_access === true;
   const paidSubscription = lifetime || (subscriptionActive && (!expiresAt || new Date(expiresAt).getTime() > Date.now()));
-
   const promo = user?.promo;
   const promoAccess = promo?.status === "active" && (!promo.expiresAt || new Date(promo.expiresAt).getTime() > Date.now());
-
   return paidSubscription || promoAccess;
 }
 
 export async function getSubscription(userId, client = pool) {
-  // Le profil utilisateur ne doit pas devenir illisible simplement parce que
-  // l'historique des paiements est temporairement indisponible/incomplet.
+  // L'accès au compte ne dépend pas du profil portefeuille ni de l'historique
+  // des paiements : les deux sont des données distinctes et ne doivent pas
+  // provoquer un faux 404/500 sur /api/subscription.
   const { rows } = await client.query(
     `SELECT u.id, u.subscription_plan, u.subscription_status, u.subscription_expires_at,
-            u.subscription_expires, u.is_lifetime, u.lifetime_access,
-            u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone
-     FROM users u
-     WHERE u.id = $1`,
+            u.subscription_expires, u.is_lifetime, u.lifetime_access
+     FROM users u WHERE u.id = $1`,
     [userId]
   );
   const user = rows[0];
@@ -63,15 +54,12 @@ export async function getSubscription(userId, client = pool) {
     );
     latestSubscriptionSource = payment.rows[0]?.source || null;
   } catch (error) {
-    // Non bloquant : l'accès et le profil portefeuille viennent de users.*.
     console.warn("[zakapro:subscription:history]", error?.message || error);
   }
 
   const lifetime = Boolean(user.is_lifetime || user.lifetime_access);
   const expiresAt = user.subscription_expires_at || user.subscription_expires;
-  const active = hasPremiumAccess({
-    subscription: { status: user.subscription_status, expiresAt, lifetime },
-  });
+  const active = hasPremiumAccess({ subscription: { status: user.subscription_status, expiresAt, lifetime } });
 
   if (!active && user.subscription_status === "active") {
     await client.query(
@@ -84,13 +72,7 @@ export async function getSubscription(userId, client = pool) {
     );
   }
 
-  const normalized = {
-    ...user,
-    active,
-    is_lifetime: lifetime,
-    subscription_expires_at: expiresAt,
-  };
-
+  const normalized = { ...user, active, is_lifetime: lifetime, subscription_expires_at: expiresAt };
   return {
     ...normalized,
     subscription: {
