@@ -53,23 +53,28 @@ export default async function handler(req, res) {
       [app.id]
     );
 
-    // Profil persistant partagé par toutes les applications du même compte marchand.
-    // Fallback vers users.* pour les anciennes bases déjà en production.
     let wallets = await getWalletProfile(app.user_id);
     if (!wallets.moncashPhone || !wallets.natcashPhone) {
-      const legacy = await pool.query(
-        `SELECT moncash_name, moncash_phone, natcash_name, natcash_phone
-         FROM users WHERE id = $1 LIMIT 1`,
-        [app.user_id]
-      );
-      const row = legacy.rows[0];
-      if (row) {
-        wallets = {
-          moncashName: wallets.moncashName || row.moncash_name || "",
-          moncashPhone: wallets.moncashPhone || row.moncash_phone || "",
-          natcashName: wallets.natcashName || row.natcash_name || "",
-          natcashPhone: wallets.natcashPhone || row.natcash_phone || "",
-        };
+      // Compatibilité avec les anciennes bases qui stockaient encore le profil
+      // directement dans users. Un schéma ancien sans ces colonnes ne doit
+      // jamais casser le Hub public.
+      try {
+        const legacy = await pool.query(
+          `SELECT moncash_name, moncash_phone, natcash_name, natcash_phone
+           FROM users WHERE id = $1 LIMIT 1`,
+          [app.user_id]
+        );
+        const row = legacy.rows[0];
+        if (row) {
+          wallets = {
+            moncashName: wallets.moncashName || row.moncash_name || "",
+            moncashPhone: wallets.moncashPhone || row.moncash_phone || "",
+            natcashName: wallets.natcashName || row.natcash_name || "",
+            natcashPhone: wallets.natcashPhone || row.natcash_phone || "",
+          };
+        }
+      } catch (error) {
+        console.warn("[zakapro:apps:plans:legacy-wallet]", error?.message || error);
       }
     }
 
