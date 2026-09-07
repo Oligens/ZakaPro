@@ -20,18 +20,25 @@ export async function ensureWalletProfileTable() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `).then(async () => {
-      await pool.query(`
-        INSERT INTO merchant_wallet_profiles (user_id, moncash_name, moncash_phone, natcash_name, natcash_phone)
-        SELECT id,
-               COALESCE(moncash_name, ''), COALESCE(moncash_phone, ''),
-               COALESCE(natcash_name, ''), COALESCE(natcash_phone, '')
-        FROM users
-        WHERE COALESCE(moncash_name, '') <> ''
-           OR COALESCE(moncash_phone, '') <> ''
-           OR COALESCE(natcash_name, '') <> ''
-           OR COALESCE(natcash_phone, '') <> ''
-        ON CONFLICT (user_id) DO NOTHING
-      `);
+      // Backfill best-effort pour les installations historiques qui possèdent
+      // déjà les colonnes users.*. Une ancienne base sans ces colonnes reste
+      // parfaitement compatible avec la nouvelle table.
+      try {
+        await pool.query(`
+          INSERT INTO merchant_wallet_profiles (user_id, moncash_name, moncash_phone, natcash_name, natcash_phone)
+          SELECT id,
+                 COALESCE(moncash_name, ''), COALESCE(moncash_phone, ''),
+                 COALESCE(natcash_name, ''), COALESCE(natcash_phone, '')
+          FROM users
+          WHERE COALESCE(moncash_name, '') <> ''
+             OR COALESCE(moncash_phone, '') <> ''
+             OR COALESCE(natcash_name, '') <> ''
+             OR COALESCE(natcash_phone, '') <> ''
+          ON CONFLICT (user_id) DO NOTHING
+        `);
+      } catch (error) {
+        console.warn("[zakapro:wallet:legacy-backfill]", error?.message || error);
+      }
     }).catch((error) => {
       ensurePromise = null;
       throw error;
@@ -48,15 +55,12 @@ export async function getWalletProfile(userId, client = pool) {
     [userId]
   );
   const row = rows[0];
-  if (row) {
-    return {
-      moncashName: row.moncash_name || "",
-      moncashPhone: row.moncash_phone || "",
-      natcashName: row.natcash_name || "",
-      natcashPhone: row.natcash_phone || "",
-    };
-  }
-  return { moncashName: "", moncashPhone: "", natcashName: "", natcashPhone: "" };
+  return {
+    moncashName: row?.moncash_name || "",
+    moncashPhone: row?.moncash_phone || "",
+    natcashName: row?.natcash_name || "",
+    natcashPhone: row?.natcash_phone || "",
+  };
 }
 
 export async function saveWalletProfile(userId, fields, client = pool) {
@@ -74,13 +78,17 @@ export async function saveWalletProfile(userId, fields, client = pool) {
     [userId, fields.moncashName, fields.moncashPhone, fields.natcashName, fields.natcashPhone]
   );
 
-  // Compatibilité avec les anciennes versions qui lisent encore users.*.
-  await client.query(
-    `UPDATE users
-     SET moncash_name=$2, moncash_phone=$3, natcash_name=$4, natcash_phone=$5
-     WHERE id=$1`,
-    [userId, fields.moncashName, fields.moncashPhone, fields.natcashName, fields.natcashPhone]
-  );
+  // Compatibilité best-effort avec les anciennes versions qui lisaient users.*.
+  try {
+    await client.query(
+      `UPDATE users
+       SET moncash_name=$2, moncash_phone=$3, natcash_name=$4, natcash_phone=$5
+       WHERE id=$1`,
+      [userId, fields.moncashName, fields.moncashPhone, fields.natcashName, fields.natcashPhone]
+    );
+  } catch (error) {
+    console.warn("[zakapro:wallet:legacy-sync]", error?.message || error);
+  }
 
   return fields;
 }
