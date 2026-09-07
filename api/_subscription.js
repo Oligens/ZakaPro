@@ -30,47 +30,47 @@ export function samePhone(left, right) {
 export function hasPremiumAccess(user) {
   const subscription = user?.subscription || user || {};
   const expiresAt = subscription.expiresAt ?? subscription.subscription_expires_at ?? subscription.subscription_expires;
-  const subscriptionActive =
-    subscription.status === "active" || subscription.subscription_status === "active";
+  const subscriptionActive = subscription.status === "active" || subscription.subscription_status === "active";
   const lifetime = subscription.lifetime === true || subscription.is_lifetime === true || subscription.lifetime_access === true;
   const paidSubscription = lifetime || (subscriptionActive && (!expiresAt || new Date(expiresAt).getTime() > Date.now()));
 
   const promo = user?.promo;
-  const promoAccess =
-    promo?.status === "active" &&
-    (!promo.expiresAt || new Date(promo.expiresAt).getTime() > Date.now());
+  const promoAccess = promo?.status === "active" && (!promo.expiresAt || new Date(promo.expiresAt).getTime() > Date.now());
 
   return paidSubscription || promoAccess;
 }
 
 export async function getSubscription(userId, client = pool) {
+  // Le profil utilisateur ne doit pas devenir illisible simplement parce que
+  // l'historique des paiements est temporairement indisponible/incomplet.
   const { rows } = await client.query(
     `SELECT u.id, u.subscription_plan, u.subscription_status, u.subscription_expires_at,
             u.subscription_expires, u.is_lifetime, u.lifetime_access,
-            u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone,
-            sp.source AS latest_subscription_source
+            u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone
      FROM users u
-     LEFT JOIN LATERAL (
-       SELECT source
-       FROM subscription_payments
-       WHERE user_id = u.id
-       ORDER BY created_at DESC
-       LIMIT 1
-     ) sp ON true
      WHERE u.id = $1`,
     [userId]
   );
   const user = rows[0];
   if (!user) return null;
 
+  let latestSubscriptionSource = null;
+  try {
+    const payment = await client.query(
+      `SELECT source FROM subscription_payments
+       WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [userId]
+    );
+    latestSubscriptionSource = payment.rows[0]?.source || null;
+  } catch (error) {
+    // Non bloquant : l'accès et le profil portefeuille viennent de users.*.
+    console.warn("[zakapro:subscription:history]", error?.message || error);
+  }
+
   const lifetime = Boolean(user.is_lifetime || user.lifetime_access);
   const expiresAt = user.subscription_expires_at || user.subscription_expires;
   const active = hasPremiumAccess({
-    subscription: {
-      status: user.subscription_status,
-      expiresAt,
-      lifetime,
-    },
+    subscription: { status: user.subscription_status, expiresAt, lifetime },
   });
 
   if (!active && user.subscription_status === "active") {
@@ -99,10 +99,7 @@ export async function getSubscription(userId, client = pool) {
       expiresAt,
       lifetime,
     },
-    // A promo activation is persisted as a platform subscription payment.
-    // Exposing it this way keeps the frontend aware of the actual access source
-    // without trusting the promo-code record's own redemption expiry.
-    promo: user.latest_subscription_source === "promo" && active
+    promo: latestSubscriptionSource === "promo" && active
       ? { status: "active", expiresAt: expiresAt || null }
       : null,
   };
@@ -169,10 +166,10 @@ export async function activateSubscription(client, userId, plan, amount, source,
     `UPDATE users
      SET subscription_plan = $2,
          subscription_status = 'active',
-       subscription_expires_at = ${expirySql},
-       is_lifetime = ($2 = 'lifetime'),
-       subscription_expires = ${expirySql},
-       lifetime_access = ($2 = 'lifetime')
+         subscription_expires_at = ${expirySql},
+         is_lifetime = ($2 = 'lifetime'),
+         subscription_expires = ${expirySql},
+         lifetime_access = ($2 = 'lifetime')
      WHERE id = $1`,
     [userId, plan]
   );
