@@ -1,14 +1,18 @@
 import { getSession, pool, dbReady, readBody, sendJson } from "./_lib.js";
 import { getSubscription, normalizePhone } from "./_subscription.js";
+import { getWalletProfile, saveWalletProfile } from "./_wallet.js";
 
 export default async function handler(req, res) {
   const session = getSession(req);
   if (!session) return sendJson(res, 401, { error: "Authentification requise", code: "unauthorized" });
   if (!dbReady()) return sendJson(res, 503, { error: "Base de données non configurée.", code: "config" });
+
   try {
     if (req.method === "GET") {
       const subscription = await getSubscription(session.sub);
       if (!subscription) return sendJson(res, 404, { error: "Compte introuvable" });
+
+      const wallets = await getWalletProfile(session.sub);
       return sendJson(res, 200, {
         adminPayment: {
           moncashPhone: process.env.ADMIN_MONCASH_PHONE || "50944617600",
@@ -21,15 +25,12 @@ export default async function handler(req, res) {
           expiresAt: subscription.subscription_expires_at,
           lifetime: Boolean(subscription.is_lifetime),
         },
-        wallets: {
-          moncashName: subscription.moncash_name || "",
-          moncashPhone: subscription.moncash_phone || "",
-          natcashName: subscription.natcash_name || "",
-          natcashPhone: subscription.natcash_phone || "",
-        },
+        wallets,
       });
     }
+
     if (req.method !== "POST") return sendJson(res, 405, { error: "Méthode non autorisée" });
+
     const body = await readBody(req);
     const wallets = body.wallets || body;
     const fields = {
@@ -38,16 +39,22 @@ export default async function handler(req, res) {
       natcashName: String(wallets.natcashName || "").trim(),
       natcashPhone: normalizePhone(wallets.natcashPhone),
     };
+
     if (!fields.moncashName || !fields.moncashPhone || !fields.natcashName || !fields.natcashPhone) {
-      return sendJson(res, 400, { error: "Les noms et numéros MonCash/Natcash sont obligatoires.", code: "validation" });
+      return sendJson(res, 400, {
+        error: "Les noms et numéros MonCash/Natcash sont obligatoires.",
+        code: "validation",
+      });
     }
-    await pool.query(
-      `UPDATE users SET moncash_name = $1, moncash_phone = $2, natcash_name = $3, natcash_phone = $4 WHERE id = $5`,
-      [fields.moncashName, fields.moncashPhone, fields.natcashName, fields.natcashPhone, session.sub]
-    );
-    return sendJson(res, 200, { ok: true, wallets: fields });
+
+    const saved = await saveWalletProfile(session.sub, fields);
+    return sendJson(res, 200, { ok: true, wallets: saved });
   } catch (error) {
     console.error("[zakapro:subscription]", error.message);
-    return sendJson(res, 500, { error: "Impossible de mettre à jour l'abonnement.", code: "server" });
+    return sendJson(res, 500, {
+      error: "Impossible de mettre à jour le profil portefeuille.",
+      code: "server",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 }
