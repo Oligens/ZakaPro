@@ -1,4 +1,5 @@
 import { dbReady, pool, sendJson } from "../../_lib.js";
+import { getWalletProfile } from "../../_wallet.js";
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -25,27 +26,85 @@ export default async function handler(req, res) {
     if (!key && !appId) return sendJson(res, 400, { error: "app_key ou app_id requis.", code: "missing_app_identifier" });
 
     const appResult = key
-      ? await pool.query(`SELECT a.id, a.name, a.public_key, a.color, a.monogram, u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone FROM apps a JOIN users u ON u.id = a.user_id WHERE a.id::text = $1 OR a.public_key = $1 LIMIT 1`, [key])
-      : await pool.query(`SELECT a.id, a.name, a.public_key, a.color, a.monogram, u.moncash_name, u.moncash_phone, u.natcash_name, u.natcash_phone FROM apps a JOIN users u ON u.id = a.user_id WHERE a.id::text = $1 LIMIT 1`, [appId]);
+      ? await pool.query(
+          `SELECT a.id, a.user_id, a.name, a.public_key, a.color, a.monogram
+           FROM apps a
+           WHERE a.id::text = $1 OR a.public_key = $1
+           LIMIT 1`,
+          [key]
+        )
+      : await pool.query(
+          `SELECT a.id, a.user_id, a.name, a.public_key, a.color, a.monogram
+           FROM apps a
+           WHERE a.id::text = $1
+           LIMIT 1`,
+          [appId]
+        );
     const app = appResult.rows[0];
     if (!app) return sendJson(res, 404, { error: "Application introuvable.", code: "app_not_found" });
 
     const { rows: plans } = await pool.query(
       `SELECT id, app_id, name, amount, recurrence, delivery, created_at
-       FROM plans WHERE app_id = $1 ORDER BY created_at ASC, id ASC`, [app.id]
+       FROM plans WHERE app_id = $1 ORDER BY created_at ASC, id ASC`,
+      [app.id]
     );
     const { rows: zones } = await pool.query(
-      `SELECT id, app_id, name, fee_pct FROM zones WHERE app_id = $1 ORDER BY name ASC, id ASC`, [app.id]
+      `SELECT id, app_id, name, fee_pct FROM zones WHERE app_id = $1 ORDER BY name ASC, id ASC`,
+      [app.id]
     );
+
+    // Profil persistant partagé par toutes les applications du même compte marchand.
+    // Fallback vers users.* pour les anciennes bases déjà en production.
+    let wallets = await getWalletProfile(app.user_id);
+    if (!wallets.moncashPhone || !wallets.natcashPhone) {
+      const legacy = await pool.query(
+        `SELECT moncash_name, moncash_phone, natcash_name, natcash_phone
+         FROM users WHERE id = $1 LIMIT 1`,
+        [app.user_id]
+      );
+      const row = legacy.rows[0];
+      if (row) {
+        wallets = {
+          moncashName: wallets.moncashName || row.moncash_name || "",
+          moncashPhone: wallets.moncashPhone || row.moncash_phone || "",
+          natcashName: wallets.natcashName || row.natcash_name || "",
+          natcashPhone: wallets.natcashPhone || row.natcash_phone || "",
+        };
+      }
+    }
 
     return sendJson(res, 200, {
       success: true,
-      app: { id: app.id, name: app.name, appKey: app.public_key, color: app.color, monogram: app.monogram, wallets: { moncashName: app.moncash_name || '', moncashPhone: app.moncash_phone || '', natcashName: app.natcash_name || '', natcashPhone: app.natcash_phone || '' } },
-      plans: plans.map((p) => ({ id: p.id, appId: p.app_id, name: p.name, amount: Number(p.amount), recurrence: p.recurrence, delivery: Boolean(p.delivery), createdAt: Number(p.created_at) })),
-      zones: zones.map((z) => ({ id: z.id, appId: z.app_id, name: z.name, feePct: Number(z.fee_pct) }))
+      app: {
+        id: app.id,
+        name: app.name,
+        appKey: app.public_key,
+        color: app.color,
+        monogram: app.monogram,
+        wallets,
+      },
+      plans: plans.map((p) => ({
+        id: p.id,
+        appId: p.app_id,
+        name: p.name,
+        amount: Number(p.amount),
+        recurrence: p.recurrence,
+        delivery: Boolean(p.delivery),
+        createdAt: Number(p.created_at),
+      })),
+      zones: zones.map((z) => ({
+        id: z.id,
+        appId: z.app_id,
+        name: z.name,
+        feePct: Number(z.fee_pct),
+      })),
     });
   } catch (error) {
     console.error("[zakapro:apps:plans]", error);
-    return sendJson(res, 500, { error: "Impossible de charger les plans de l'application.", code: "server" });
+    return sendJson(res, 500, {
+      error: "Impossible de charger les plans de l'application.",
+      code: "server",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 }
