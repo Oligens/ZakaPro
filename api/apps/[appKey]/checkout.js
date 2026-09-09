@@ -229,11 +229,24 @@ export default async function handler(req,res) {
 
     if(req.method==="OPTIONS")return sendJson(res,200,{ok:true});
 
-    // The public Web SDK and older integrations call /checkout for a plan.
-    // Detect subscription payloads before the monetization action router.
+    // Subscription checkout has its own namespace. Older clients may send an
+    // action field such as "checkout" or "subscription"; these are aliases for
+    // the secure plan checkout and MUST be handled before the monetization router.
+    // This prevents a subscription request from falling through to
+    // handleMonetization() and returning the misleading "unknown_action" 400.
     const requestBody = req.method==="GET" ? {} : await readBody(req);
     const hasPlan = Boolean(cleanText(requestBody.planId || requestBody.plan_id, 128));
-    if(req.method==="POST" && hasPlan && !requestBody.action){
+    const requestedAction = cleanText(requestBody.action, 64).toLowerCase();
+    const subscriptionActions = new Set([
+      "",
+      "checkout",
+      "subscription",
+      "subscription_checkout",
+      "subscription_intent",
+      "payment_intent",
+      "create_payment_intent"
+    ]);
+    if(req.method==="POST" && hasPlan && subscriptionActions.has(requestedAction)){
       return handleSubscriptionCheckout(req,res,app,requestBody);
     }
 
