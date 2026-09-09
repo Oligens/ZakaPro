@@ -18,7 +18,7 @@ export default async function handler(req,res){
     if(!app) return sendJson(res,404,{error:"Application introuvable.",code:"app_not_found"});
 
     const result=await pool.query(
-      `SELECT cpi.status, cpi.reference, cpi.total_amount, cpi.paid_at,
+      `SELECT cpi.status, cpi.reference, cpi.total_amount, cpi.paid_at, cpi.expires_at,
               p.id AS plan_id, p.name AS plan_name, p.amount AS plan_amount,
               a.id AS app_id
        FROM checkout_payment_intents cpi
