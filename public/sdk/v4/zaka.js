@@ -89,7 +89,7 @@
   };
   ZakaProClient.prototype.startPolling=function(plan,state,body){
     var self=this,reference=state.intent.reference,stopped=false,timer=null;state.loading=true;
-    var poll=async function(){if(stopped)return;try{var r=await fetch(self.apiBase+"/api/apps/"+encodeURIComponent(self.appKey)+"/checkout-status?reference="+encodeURIComponent(reference),{headers:{Accept:"application/json"},credentials:"omit",cache:"no-store"});
+    var poll=async function(){if(stopped)return;try{var r=await fetch(self.apiBase+"/api/checkout-status?appKey="+encodeURIComponent(self.appKey)+"&reference="+encodeURIComponent(reference),{headers:{Accept:"application/json"},credentials:"omit",cache:"no-store"});
       var b=await r.json();if(!r.ok)throw new Error(b.error||"Impossible de vérifier le paiement.");
       if(b.status==="paid"){stopped=true;state.loading=false;body.replaceChildren();var ok=document.createElement("div");ok.className="zakapro-info";
         ok.innerHTML="<div class=zakapro-success>✓ Paiement confirmé</div><p>"+esc(b.plan.name)+" est validé pour <b>"+money(b.amount)+" HTG</b>.</p><p class=zakapro-muted>Le webhook de confirmation a été déclenché côté ZakaPro.</p>";body.appendChild(ok);var detail={reference:b.reference,plan:b.plan,amount:b.amount,appId:b.appId};try{global.dispatchEvent(new CustomEvent("zakapro:payment-confirmed",{detail:detail}));}catch(_){}if(self.onPaymentConfirmed){try{self.onPaymentConfirmed(detail);}catch(e){console.error("[ZakaPro:onPaymentConfirmed]",e);}}setTimeout(function(){self.closeModal();},2200);return;}
