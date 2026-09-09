@@ -164,6 +164,16 @@ export default async function handler(req,res) {
     if(req.method==="OPTIONS")return sendJson(res,200,{ok:true});
 
     if(req.method==="GET"){
+      if(String(req.query?.mode||"")==="withdrawals"){
+        const session=getSession(req);
+        if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
+        if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
+        const result=await pool.query(
+          `SELECT id,user_id,amount,currency,method,destination,status,admin_note,created_at,completed_at
+           FROM withdrawal_requests WHERE app_id=$1 ORDER BY created_at DESC LIMIT 100`,[app.id]
+        );
+        return sendJson(res,200,{withdrawals:result.rows});
+      }
       const plans=await pool.query(\`SELECT id,app_id,name,amount,recurrence,delivery,product_type FROM plans WHERE app_id=$1 ORDER BY created_at DESC\`,[app.id]);
       const config=await getMonetizationConfig(app.id);
       const recipient=cleanText(req.query?.recipientUserId||"",128);
@@ -173,6 +183,39 @@ export default async function handler(req,res) {
 
     if(req.method==="POST"){
       const body=await readBody(req);
+      if(String(body.action||"")==="withdrawal_update"){
+        const session=getSession(req);
+        if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
+        if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
+        const withdrawalId=cleanText(body.withdrawalId,128);
+        const nextStatus=cleanText(body.status,20);
+        const note=cleanText(body.adminNote,500);
+        if(!withdrawalId||!["processing","completed","rejected","cancelled"].includes(nextStatus))return sendJson(res,400,{error:"Statut de retrait invalide.",code:"validation"});
+        const client=await pool.connect();
+        try{
+          await client.query("BEGIN");
+          const current=await client.query(`SELECT * FROM withdrawal_requests WHERE id::text=$1 AND app_id=$2 FOR UPDATE`,[withdrawalId,app.id]);
+          if(!current.rowCount){await client.query("ROLLBACK");return sendJson(res,404,{error:"Demande de retrait introuvable.",code:"not_found"});}
+          const w=current.rows[0];
+          if(["completed","rejected","cancelled"].includes(w.status)){await client.query("ROLLBACK");return sendJson(res,409,{error:"Cette demande est déjà clôturée.",code:"already_closed"});}
+          if(["rejected","cancelled"].includes(nextStatus)){
+            await creditWallet(client,{appId:app.id,userId:w.user_id,amount:Number(w.amount),currency:w.currency,reason:"withdrawal_refund",reference:`withdrawal-refund:${w.id}`,metadata:{withdrawalId:w.id}});
+          }
+          const {rows}=await client.query(
+            `UPDATE withdrawal_requests SET status=$1,admin_note=$2,completed_at=CASE WHEN $1='completed' THEN now() ELSE completed_at END
+             WHERE id=$3 RETURNING id,user_id,amount,currency,method,destination,status,admin_note,created_at,completed_at`,
+            [nextStatus,note||null,w.id]
+          );
+          await client.query("COMMIT");
+          const payload={id:`evt_${crypto.randomUUID().replace(/-/g,"").slice(0,20)}`,event:"withdrawal.updated",createdAt:new Date().toISOString(),app:app.id,appKey:app.public_key,withdrawal:rows[0]};
+          const webhook=await sendWebhook(app,payload);
+          return sendJson(res,200,{ok:true,withdrawal:rows[0],refunded:["rejected","cancelled"].includes(nextStatus),webhook:webhook?.delivered?"delivered":app.webhook_url?"failed":"not_configured"});
+        }catch(error){
+          try{await client.query("ROLLBACK")}catch{}
+          throw error;
+        }finally{client.release()}
+      }
+
       if(["donation_intent","token_gift","withdrawal","wallet","config"].includes(String(body.action||""))) {
         if(body.action==="config"){
           const session=getSession(req);
