@@ -26,13 +26,6 @@
       { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
     ] }
   ],
-  "routes": [
-    {
-      "src": "^/api/apps/([^/]+)/checkout$",
-      "methods": ["POST"],
-      "dest": "/api/apps/$1/payment-intent?appKey=$1"
-    }
-  ],
   "rewrites": [
     { "source": "/api/apps/:appId/monetization/settings", "destination": "/api/apps/:appId/checkout?mode=monetization_settings" },
     { "source": "/api/apps/:appId/wallets", "destination": "/api/apps/:appId/checkout?mode=wallets" },
