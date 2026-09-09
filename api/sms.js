@@ -100,7 +100,7 @@ async function handleMerchantIntent(client, intent, parsed, source) {
     const existingEvent = await client.query(`SELECT id FROM monetization_events WHERE event_key=$1 LIMIT 1`, [eventKey]);
     if (existingEvent.rowCount) return { status: 409, body: { error: "Cette transaction a déjà été créditée.", code: "duplicate_transaction" } };
     await creditWallet(client, { appId: intent.app_id, userId: recipientUserId, amount: creatorAmount, currency: "HTG", reason: "donation_received", reference: eventKey, metadata: { gross, pct, customerEmail: intent.customer_email } });
-    const ownerUserId = String(app.user_id);
+    const ownerUserId = `merchant:${String(app.user_id)}`;
     if (platformAmount > 0) {
       await creditWallet(client, { appId: intent.app_id, userId: ownerUserId, amount: platformAmount, currency: "HTG", reason: "platform_revenue", reference: eventKey, metadata: { recipientUserId } });
     }
