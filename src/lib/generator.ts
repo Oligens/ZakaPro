@@ -98,3 +98,20 @@ export function listenerSnippet(app:ZakaApp):string{
 }
 export async function copyText(text:string):Promise<boolean>{try{await navigator.clipboard.writeText(text);return true}catch{try{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);return true}catch{return false}}}
 export const ZAKAPRO_SDK_URL=DEFAULT_SDK_URL;
+
+
+export function monetizationWidgetSnippet(app: ZakaApp, recipientUserId = "USER_TARGET_ID"): string {
+  return [
+    `<!-- ZakaPro — Widget de monétisation pour ${app.name} -->`,
+    `<div id="zakapro-monetization-widget" data-zakapro-app-key="${app.publicKey}" data-recipient-user-id="${recipientUserId}" data-theme="glassmorphism"></div>`,
+    '<script src="https://zakapro.vercel.app/sdk/v4/widget.js" async></script>',
+    '<script>',
+    'window.addEventListener("DOMContentLoaded",function(){',
+    '  const el=document.getElementById("zakapro-monetization-widget");',
+    '  const widget=ZakaProMonetization.init({appKey:el.dataset.zakaproAppKey,recipientUserId:el.dataset.recipientUserId,apiBase:"https://zakapro.vercel.app"});',
+    '  el.innerHTML=\'<button type="button" style="display:inline-block;background:#EAB308;color:#090D16;border:0;border-radius:10px;padding:13px 22px;font:800 14px system-ui;cursor:pointer">Faire un don</button>\';',
+    '  el.querySelector("button").addEventListener("click",function(){widget.open();});',
+    '});',
+    '</script>',
+  ].join("\\n");
+}
