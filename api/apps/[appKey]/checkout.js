@@ -15,7 +15,6 @@ function normalizePhone(value) {
 }
 
 function isValidHaitianPhone(value) {
-  // IMPORTANT: \d, not \\d. The latter matches the literal characters "\\d".
   return /^\+509\d{8}$/.test(value);
 }
 
@@ -55,6 +54,60 @@ async function sendWebhook(app, payload) {
     console.error("[zakapro:monetization:webhook]", error?.message || error);
     return {code:0,delivered:false};
   }
+}
+
+// Subscription checkout is intentionally handled here as well as by
+// /payment-intent. This prevents legacy SDKs/cURL integrations that still
+// call /checkout from falling into the monetization action router and getting
+// a misleading HTTP 400 "unknown_action" response.
+async function handleSubscriptionCheckout(req, res, app, body) {
+  const planId = cleanText(body.planId || body.plan_id, 128);
+  const customerName = cleanText(body.customerName || body.name, 120);
+  const email = cleanText(body.email, 254).toLowerCase();
+  const phone = normalizePhone(body.phone);
+
+  if (!planId) return sendJson(res, 400, { error: "planId requis.", code: "missing_plan_id" });
+  if (customerName.length < 2) return sendJson(res, 400, { error: "Nom client invalide.", code: "invalid_customer_name" });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: "Email client invalide.", code: "invalid_email" });
+  if (!isValidHaitianPhone(phone)) return sendJson(res, 400, { error: "Numéro haïtien invalide. Utilisez 8 chiffres, par exemple 37124589 ou +509 37124589.", code: "invalid_phone" });
+
+  const planResult = await pool.query(
+    `SELECT id, app_id, name, amount, recurrence, delivery
+     FROM plans WHERE id=$1 AND app_id=$2 LIMIT 1`,
+    [planId, app.id]
+  );
+  const plan = planResult.rows[0];
+  if (!plan) return sendJson(res, 404, { error: "Plan introuvable pour cette application.", code: "plan_not_found" });
+
+  const amount = money(plan.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return sendJson(res, 422, { error: "Le prix du plan est invalide en base de données.", code: "invalid_plan_price" });
+
+  const ref = reference("ZK");
+  const { rows } = await pool.query(
+    `INSERT INTO checkout_payment_intents
+     (app_id,plan_id,customer_name,customer_email,customer_phone,
+      base_amount,fee_amount,total_amount,delivery,reference,monetization_type)
+     VALUES($1,$2,$3,$4,$5,$6,0,$6,$7,$8,'subscription')
+     RETURNING id,reference,plan_id,total_amount,delivery,status,expires_at`,
+    [app.id, plan.id, customerName, email, phone, amount, Boolean(plan.delivery), ref]
+  );
+
+  return sendJson(res, 201, {
+    success: true,
+    ok: true,
+    intent: {
+      id: rows[0].id,
+      reference: rows[0].reference,
+      planId: rows[0].plan_id,
+      total_amount: Number(rows[0].total_amount),
+      amount: Number(rows[0].total_amount),
+      delivery: Boolean(rows[0].delivery),
+      status: rows[0].status,
+      expires_at: rows[0].expires_at,
+    },
+    plan: { id: plan.id, name: plan.name, amount },
+    payment: { currency: "HTG", methods: ["moncash", "natcash"] },
+  });
 }
 
 async function handleMonetization(req,res,app,body) {
@@ -169,18 +222,26 @@ async function handleMonetization(req,res,app,body) {
 export default async function handler(req,res) {
   if(!dbReady())return sendJson(res,503,{error:"Base de données non configurée.",code:"config"});
   try {
-    const appKey=cleanText(req.query?.appKey||"");
+    const appKey=cleanText(req.query?.appKey||req.query?.app_key||"");
     if(!appKey)return sendJson(res,400,{error:"appKey requis.",code:"missing_app_key"});
     const app=await getApp(appKey);
     if(!app)return sendJson(res,404,{error:"Application introuvable.",code:"app_not_found"});
 
     if(req.method==="OPTIONS")return sendJson(res,200,{ok:true});
 
+    // The public Web SDK and older integrations call /checkout for a plan.
+    // Detect subscription payloads before the monetization action router.
+    const requestBody = req.method==="GET" ? {} : await readBody(req);
+    const hasPlan = Boolean(cleanText(requestBody.planId || requestBody.plan_id, 128));
+    if(req.method==="POST" && hasPlan && !requestBody.action){
+      return handleSubscriptionCheckout(req,res,app,requestBody);
+    }
+
     if(req.method==="PUT" && String(req.query?.mode||"")==="monetization_settings"){
       const session=getSession(req);
       if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
       if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
-      const body=await readBody(req);
+      const body=requestBody;
       const tokenRate=money(body.tokenToHtgRate);
       if(!Number.isFinite(tokenRate)||tokenRate<=0||tokenRate>1000000)
         return sendJson(res,400,{error:"Le taux Jeton → HTG est invalide.",code:"invalid_rate"});
@@ -213,7 +274,7 @@ export default async function handler(req,res) {
       const session=getSession(req);
       if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
       if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
-      const body=await readBody(req);
+      const body=requestBody;
       const withdrawalId=cleanText(body.withdrawalId,128);
       const nextStatus=cleanText(body.status,20);
       const note=cleanText(body.adminNote,500);
@@ -246,8 +307,7 @@ export default async function handler(req,res) {
       }finally{client.release()}
     }
 
-    const body=req.method==="GET"?{}:await readBody(req);
-    return handleMonetization(req,res,app,body);
+    return handleMonetization(req,res,app,requestBody);
   } catch(error) {
     console.error("[zakapro:checkout]",error);
     return sendJson(res,500,{error:"Erreur interne du serveur.",code:"internal_error"});
