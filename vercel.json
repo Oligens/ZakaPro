@@ -90,5 +90,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/subscribe",
+      "destination": "/api/subscription"
+    }
   ]
 }
