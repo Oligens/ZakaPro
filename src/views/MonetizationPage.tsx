@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { ArrowLeft, Check, Clipboard, Coins, DollarSign, RefreshCw, Save, Settings2, Wallet, XCircle } from "lucide-react";
+import { ArrowLeft, Check, Clipboard, Coins, DollarSign, RefreshCw, Save, Settings2, Wallet, XCircle, type LucideIcon } from "lucide-react";
 import type { ZakaApp } from "../lib/data";
 
 type Rules = { standard: number; intermediate: number; vip: number };
@@ -241,12 +241,12 @@ export default function MonetizationPage() {
           </div>
         </div>
         <div className="mb-4 grid gap-2 sm:grid-cols-4">
-          {[
+          {([
             ["Fonds réels", `${fmt(totals.totalReal)} HTG`, DollarSign],
             ["Jetons", fmt(totals.totalTokens, 4), Coins],
             ["Volume HTG", `${fmt(totals.volumeHtg)} HTG`, DollarSign],
             ["Transactions", fmt(totals.transactionCount, 0), RefreshCw],
-          ].map(([label, value, Icon]) => (
+          ] as Array<[string, string, LucideIcon]>).map(([label, value, Icon]) => (
             <div key={String(label)} className="rounded-lg border border-edge bg-panel2 p-3">
               <div className="flex items-center gap-2 text-fog2"><Icon size={13} /><span className="text-[10px] font-extrabold uppercase tracking-wider">{label}</span></div>
               <p className="mt-1 font-display text-base font-bold text-gold">{String(value)}</p>
