@@ -69,11 +69,13 @@ async function handleMerchantIntent(client, intent, parsed, source) {
   if (!app) return { status: 404, body: { error: "Application introuvable.", code: "app_not_found" }};
 
   const planResult = await client.query(
-    `SELECT id, name, amount, delivery FROM plans
+    `SELECT id, name, amount, delivery, product_type FROM plans
      WHERE id = $1 AND app_id = $2 LIMIT 1`, [intent.plan_id, intent.app_id]
   );
   const plan = planResult.rows[0];
-  if (!plan) return { status: 404, body: { error: "Plan introuvable.", code: "plan_not_found" }};
+  if (intent.monetization_type !== "donation" && !plan) {
+    return { status: 404, body: { error: "Plan introuvable.", code: "plan_not_found" }};
+  }
 
   if (parsed.reference) {
     const duplicate = await client.query(
@@ -81,6 +83,70 @@ async function handleMerchantIntent(client, intent, parsed, source) {
        WHERE paid_reference = $1 AND status = 'paid' LIMIT 1`, [parsed.reference]
     );
     if (duplicate.rowCount) return { status: 409, body: { error: "Cette transaction a déjà été traitée.", code: "duplicate_transaction" }};
+  }
+
+  if (intent.monetization_type === "donation") {
+    const { ensureMonetizationTables, getMonetizationConfig, getUserWallet, creditWallet } = await import("./_wallet.js");
+    await ensureMonetizationTables(client);
+    const recipientUserId = String(intent.recipient_user_id || "").trim();
+    if (!recipientUserId) return { status: 422, body: { error: "Destinataire du don absent.", code: "recipient_missing" } };
+    const config = await getMonetizationConfig(intent.app_id, client);
+    const recipient = await getUserWallet(intent.app_id, recipientUserId, client);
+    const gross = Number(intent.total_amount);
+    const pct = Number(config.rules[recipient.tierLevel] ?? config.rules.standard ?? 30);
+    const creatorAmount = Math.round(gross * pct) / 100;
+    const platformAmount = Math.round((gross - creatorAmount) * 100) / 100;
+    const eventKey = `payment:${parsed.reference}`;
+    const existingEvent = await client.query(`SELECT id FROM monetization_events WHERE event_key=$1 LIMIT 1`, [eventKey]);
+    if (existingEvent.rowCount) return { status: 409, body: { error: "Cette transaction a déjà été créditée.", code: "duplicate_transaction" } };
+    await creditWallet(client, { appId: intent.app_id, userId: recipientUserId, amount: creatorAmount, currency: "HTG", reason: "donation_received", reference: eventKey, metadata: { gross, pct, customerEmail: intent.customer_email } });
+    const ownerUserId = String(app.user_id);
+    if (platformAmount > 0) {
+      await creditWallet(client, { appId: intent.app_id, userId: ownerUserId, amount: platformAmount, currency: "HTG", reason: "platform_revenue", reference: eventKey, metadata: { recipientUserId } });
+    }
+    await client.query(
+      `INSERT INTO monetization_events
+       (app_id,event_key,event_type,sender_user_id,recipient_user_id,gross_amount,token_amount,creator_pct,creator_amount,platform_amount,currency,reference,metadata)
+       VALUES($1,$2,'donation',NULL,$3,$4,0,$5,$6,$7,'HTG',$8,$9)`,
+      [intent.app_id,eventKey,recipientUserId,gross,pct,creatorAmount,platformAmount,parsed.reference,JSON.stringify({ customerName:intent.customer_name, customerEmail:intent.customer_email })]
+    );
+    await client.query(`UPDATE checkout_payment_intents SET status='paid',paid_at=now(),paid_reference=$1 WHERE id=$2 AND status='pending'`, [parsed.reference, intent.id]);
+    const payload = {
+      id: `evt_${crypto.randomUUID().replace(/-/g,"").slice(0,20)}`,
+      event: "monetization.donation.received",
+      createdAt: new Date().toISOString(),
+      app: app.id, appKey: app.public_key, reference: parsed.reference,
+      recipientUserId, amount:gross, creatorPct:pct, creatorAmount, platformAmount, currency:"HTG", method:source
+    };
+    return { status: 200, body: {
+      ok:true, monetization:true, event:"donation.received", reference:parsed.reference,
+      recipientUserId, amount:gross, creatorPct:pct, creatorAmount, platformAmount
+    }, webhook:{app,payload}};
+  }
+
+  if (intent.monetization_type === "token_purchase") {
+    const { ensureMonetizationTables, creditWallet } = await import("./_wallet.js");
+    await ensureMonetizationTables(client);
+    const eventKey = `token-purchase:${parsed.reference}`;
+    const duplicate = await client.query(`SELECT id FROM monetization_events WHERE event_key=$1 LIMIT 1`, [eventKey]);
+    if (duplicate.rowCount) return { status: 409, body: { error: "Cette transaction a déjà été traitée.", code: "duplicate_transaction" } };
+    const ownerUserId = String(app.user_id);
+    await creditWallet(client, { appId: intent.app_id, userId: ownerUserId, amount:Number(intent.total_amount), currency:"HTG", reason:"token_purchase_revenue", reference:eventKey, metadata:{ customerEmail:intent.customer_email, customerPhone:intent.customer_phone } });
+    await client.query(
+      `INSERT INTO monetization_events
+       (app_id,event_key,event_type,sender_user_id,recipient_user_id,gross_amount,token_amount,creator_pct,creator_amount,platform_amount,currency,reference,metadata)
+       VALUES($1,$2,'token_purchase',NULL,NULL,$3,0,0,0,$3,'HTG',$4,$5)`,
+      [intent.app_id,eventKey,Number(intent.total_amount),parsed.reference,JSON.stringify({ customerEmail:intent.customer_email })]
+    );
+    await client.query(`UPDATE checkout_payment_intents SET status='paid',paid_at=now(),paid_reference=$1 WHERE id=$2 AND status='pending'`, [parsed.reference, intent.id]);
+    const payload = {
+      id:`evt_${crypto.randomUUID().replace(/-/g,"").slice(0,20)}`,
+      event:"monetization.tokens.purchased",
+      createdAt:new Date().toISOString(), app:app.id, appKey:app.public_key,
+      reference:parsed.reference, amount:Number(intent.total_amount), currency:"HTG",
+      customer:{name:intent.customer_name,email:intent.customer_email,phone:intent.customer_phone}
+    };
+    return { status:200, body:{ok:true,monetization:true,event:"tokens.purchased",reference:parsed.reference,amount:Number(intent.total_amount)}, webhook:{app,payload}};
   }
 
   const existing = await client.query(
