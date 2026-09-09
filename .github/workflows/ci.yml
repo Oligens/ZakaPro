@@ -25,3 +25,5 @@ jobs:
         run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Production build
         run: npm run build
+      - name: Vercel build verification
+        run: npx vercel@59.11.7 build --yes
