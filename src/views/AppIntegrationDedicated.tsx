@@ -5,15 +5,17 @@ import type { Source, ZakaApp } from "../lib/data";
 import { fmtNum } from "../lib/data";
 import { CopyBtn, Reveal, SectionHead, inputCls, labelCls } from "../components/ui";
 import { IconCheck, IconEye, IconRefresh, IconZap } from "../components/icons";
-import { curlSnippet, listenerSnippet, multiPlanButtonsSnippet, sdkSnippet, webhookSnippet } from "../lib/generator";
+import { curlSnippet, listenerSnippet, monetizationWidgetSnippet, multiPlanButtonsSnippet, sdkSnippet, webhookSnippet } from "../lib/generator";
 import { AppWebhookConfig } from "../components/AppWebhookConfig";
+import { MonetizationSettings } from "../components/MonetizationSettings";
 
-type SnippetTab = "sdk" | "buttons" | "hub" | "curl" | "webhook" | "listener";
+type SnippetTab = "sdk" | "buttons" | "hub" | "curl" | "monetization" | "webhook" | "listener";
 const SNIPPET_TABS: Array<{ key: SnippetTab; label: string }> = [
   { key: "sdk", label: "SDK Web (tous les plans)" },
   { key: "buttons", label: "Boutons multi-plans" },
   { key: "hub", label: "Boutons Hub (tous les plans)" },
   { key: "curl", label: "cURL" },
+  { key: "monetization", label: "Monétisation" },
   { key: "webhook", label: "Webhook (Node)" },
   { key: "listener", label: "Listener Android" },
 ];
@@ -40,6 +42,7 @@ export function AppIntegration() {
     buttons: multiPlanButtonsSnippet(app, appPlans),
     hub: multiPlanButtonsSnippet(app, appPlans),
     curl: curlSnippet(app, { webhook: appWebhookUrl, amount: selectedPlan?.amount, methods, planId: selectedPlan?.id, planName: selectedPlan?.name }),
+    monetization: monetizationWidgetSnippet(app),
     webhook: webhookSnippet(app),
     listener: listenerSnippet(app),
   };
@@ -60,6 +63,7 @@ export function AppIntegration() {
           <button type="button" onClick={zaka.testWebhook} className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 py-3 text-xs font-extrabold text-blue-400"><IconZap width={14} height={14}/>Envoyer un événement de test au webhook</button>
         </div>
         <AppWebhookConfig app={app} onUrlChange={setAppWebhookUrl}/>
+        <MonetizationSettings appKey={app.publicKey}/>
         <div className="rounded-xl border border-edge bg-panel p-4 shadow-card"><SectionHead title="Dernières livraisons webhook" sub="Signées HMAC-SHA256"/>{zaka.webhookDeliveries.length===0?<p className="py-4 text-center text-xs text-fog2">Aucun webhook envoyé pour l'instant.</p>:<ul className="space-y-1.5">{zaka.webhookDeliveries.slice(0,4).map(d=><li key={d.id} className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2 font-mono text-[10.5px]"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{background:d.status==="delivered"?"#22C55E":"#EC4899"}}/><span className="truncate text-fog">{d.event}</span><span className="ml-auto font-bold">{d.httpCode}</span><span className="text-fog2">{d.latencyMs} ms</span></li>)}</ul>}</div>
       </div></Reveal>
       <Reveal delay={80} className="lg:col-span-3"><div className="flex h-full min-h-[420px] flex-col rounded-xl border border-edge bg-panel shadow-card"><div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2.5">{SNIPPET_TABS.map(t=><button key={t.key} type="button" onClick={()=>setTab(t.key)} className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 font-mono text-[11px] font-bold ${tab===t.key?"bg-gold/14 text-gold":"text-fog hover:bg-panel2 hover:text-snow"}`}>{t.label}</button>)}<div className="ml-auto pl-2"><CopyBtn text={snippets[tab]} label="Copier le code"/></div></div><div className="code-scroll flex-1 overflow-auto bg-abyss/70 p-4"><pre key={tab+app.id+appWebhookUrl+selectedPlan?.id+appPlans.length} className="animate-rise font-mono text-[11.5px] leading-[1.75] text-[#b8c4d6]">{snippets[tab]}</pre></div><div className="flex items-center justify-between border-t border-edge px-4 py-3"><p className="text-[10.5px] font-semibold text-fog2">Intégration : <span className="font-mono text-fog">app_key → plans[] → planId → checkout → SMS → webhook</span></p><span className="rounded-md bg-mint/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-mint">Multi-plans</span></div></div></Reveal>
