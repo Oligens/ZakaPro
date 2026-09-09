@@ -101,6 +101,9 @@ export const DEFAULT_REVENUE_RULES = Object.freeze({
 });
 
 export async function ensureMonetizationTables(client = pool) {
+  await client.query(`ALTER TABLE checkout_payment_intents ALTER COLUMN plan_id DROP NOT NULL`).catch(()=>{});
+  await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS product_type TEXT NOT NULL DEFAULT 'subscription'`).catch(()=>{});
+  await client.query(`ALTER TABLE checkout_payment_intents ADD COLUMN IF NOT EXISTS monetization_type TEXT NOT NULL DEFAULT 'subscription', ADD COLUMN IF NOT EXISTS recipient_user_id TEXT, ADD COLUMN IF NOT EXISTS sender_user_id TEXT, ADD COLUMN IF NOT EXISTS token_amount NUMERIC(18,4), ADD COLUMN IF NOT EXISTS conversion_rate NUMERIC(12,6)`).catch(()=>{});
   await client.query(`
     CREATE TABLE IF NOT EXISTS app_monetization_settings (
       app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
