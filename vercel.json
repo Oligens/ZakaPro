@@ -20,7 +20,30 @@
     { "source": "/hub/:appId/:planId", "destination": "/index.html" },
     { "source": "/((?!api/|assets/|icons/|manifest\\.json|sw\\.js).*)", "destination": "/index.html" }
   ],
+  "routes": [
+    {
+      "src": "/api(?:/.*)?",
+      "methods": ["OPTIONS"],
+      "status": 200,
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-ZakaPro-Signature, X-Listener-Key",
+        "Access-Control-Max-Age": "86400"
+      }
+    }
+  ],
   "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-ZakaPro-Signature, X-Listener-Key" },
+        { "key": "Access-Control-Max-Age", "value": "86400" },
+        { "key": "Vary", "value": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers" }
+      ]
+    },
     {
       "source": "/assets/(.*)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
