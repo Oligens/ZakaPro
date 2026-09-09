@@ -17,6 +17,7 @@ export function PlansInner({ appId }: { appId: string }) {
   const [amount, setAmount] = useState("1500");
   const [recurrence, setRecurrence] = useState<Recurrence>("mensuel");
   const [delivery, setDelivery] = useState(false);
+  const [productType, setProductType] = useState<"subscription" | "token_purchase">("subscription");
   const [errors, setErrors] = useState<{ name?: string; amount?: string }>({});
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -33,11 +34,12 @@ export function PlansInner({ appId }: { appId: string }) {
     if (!Number.isFinite(amt) || amt < 25) errs.amount = "Montant minimum : 25 HTG.";
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    zaka.addPlan(app.id, { name, amount: amt, recurrence, delivery });
+    zaka.addPlan(app.id, { name, amount: amt, recurrence, delivery, productType });
     zaka.notify("Plan créé", `« ${name.trim()} » — lien Hub généré automatiquement.`);
     setName("");
     setAmount("1500");
     setDelivery(false);
+    setProductType("subscription");
   };
 
   const onDelete = (p: ZakaPlan) => {
@@ -61,6 +63,14 @@ export function PlansInner({ appId }: { appId: string }) {
               <input id={`plan-name-${app.id}`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Premium Pro, Kit solè…" className={inputCls} />
               {errors.name && <p className="mt-1 text-[11px] font-bold" style={{ color: "#EC4899" }}>{errors.name}</p>}
             </div>
+            <div>
+              <label className={labelCls} htmlFor={`plan-product-${app.id}`}>Type de produit</label>
+              <select id={`plan-product-${app.id}`} value={productType} onChange={(e) => setProductType(e.target.value as "subscription" | "token_purchase")} className={inputCls + " cursor-pointer"}>
+                <option value="subscription" className="bg-panel text-snow">Abonnement / paiement classique</option>
+                <option value="token_purchase" className="bg-panel text-snow">Achat de jetons — 100 % éditeur</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls} htmlFor={`plan-amount-${app.id}`}>Montant (HTG)</label>
