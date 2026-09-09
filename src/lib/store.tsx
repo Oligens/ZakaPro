@@ -60,6 +60,7 @@ import {
   type Transaction,
   type ZakaApp,
   type ZakaPlan,
+  type PlanProductType,
   type ZakaSettings,
 } from "./data";
 
@@ -91,7 +92,7 @@ export interface ZakaStore {
   pendingDeliveries: DeliveryAlert[];
 
   createApp: (name: string, color: string) => ZakaApp;
-  addPlan: (appId: string, data: { name: string; amount: number; recurrence: Recurrence; delivery: boolean }) => ZakaPlan;
+  addPlan: (appId: string, data: { name: string; amount: number; recurrence: Recurrence; delivery: boolean; productType?: PlanProductType }) => ZakaPlan;
   deletePlan: (planId: string) => void;
   addZone: (appId: string, name: string, feePct: number) => void;
   deleteZone: (zoneId: string) => void;
@@ -455,8 +456,8 @@ export function ZakaProvider({ children }: { children: ReactNode }) {
   };
 
   /* ---------- Plans ---------- */
-  const addPlan = (appId: string, data: { name: string; amount: number; recurrence: Recurrence; delivery: boolean }): ZakaPlan => {
-    const plan: ZakaPlan = { id: "plan_" + uid(), appId, name: data.name.trim(), amount: data.amount, recurrence: data.recurrence, delivery: data.delivery, createdAt: Date.now() };
+  const addPlan = (appId: string, data: { name: string; amount: number; recurrence: Recurrence; delivery: boolean; productType?: PlanProductType }): ZakaPlan => {
+    const plan: ZakaPlan = { id: "plan_" + uid(), appId, name: data.name.trim(), amount: data.amount, recurrence: data.recurrence, delivery: data.delivery, productType: data.productType || "subscription", createdAt: Date.now() };
     apply((prev) => ({ ...prev, plans: [plan, ...prev.plans] }));
     log("plans", `plan « ${plan.name} » créé (${fmtNum(plan.amount)} HTG · ${plan.recurrence}${plan.delivery ? " · livraison" : ""})`, "gold");
     return plan;
