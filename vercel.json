@@ -20,19 +20,6 @@
     { "source": "/hub/:appId/:planId", "destination": "/index.html" },
     { "source": "/((?!api/|assets/|icons/|manifest\\.json|sw\\.js).*)", "destination": "/index.html" }
   ],
-  "routes": [
-    {
-      "src": "/api(?:/.*)?",
-      "methods": ["OPTIONS"],
-      "status": 200,
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-ZakaPro-Signature, X-Listener-Key",
-        "Access-Control-Max-Age": "86400"
-      }
-    }
-  ],
   "headers": [
     {
       "source": "/api/:path*",
