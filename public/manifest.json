@@ -15,22 +15,10 @@
   "categories": ["finance", "business", "productivity"],
   "icons": [
     {
-      "src": "/icons/icon.svg",
-      "sizes": "192x192",
+      "src": "/icons/favicon.svg",
+      "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
-    },
-    {
-      "src": "/icons/icon.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/icon.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
     }
   ],
   "shortcuts": [
@@ -39,21 +27,21 @@
       "short_name": "Dashboard",
       "description": "Solde, transactions et statistiques de vos applications",
       "url": "/#/apps",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/favicon.svg", "sizes": "any" }]
     },
     {
       "name": "Écouteur SMS",
       "short_name": "SMS",
       "description": "Surveillance MonCash & Natcash en temps réel",
       "url": "/#/sms-listener",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/favicon.svg", "sizes": "any" }]
     },
     {
       "name": "Livraisons urgentes",
       "short_name": "Livraisons",
       "description": "File d'attente des alertes de livraison",
       "url": "/#/deliveries",
-      "icons": [{ "src": "/icons/icon.svg", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/favicon.svg", "sizes": "any" }]
     }
   ]
 }
