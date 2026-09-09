@@ -4,14 +4,14 @@ import { ensureMonetizationTables, getMonetizationConfig, getUserWallet, creditW
 
 function normalizePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
-  return digits.startsWith("509") ? \`+\${digits}\` : digits ? \`+509\${digits}\` : "";
+  return digits.startsWith("509") ? `+${digits}` : digits ? `+509${digits}` : "";
 }
 function cleanText(value, max = 255) { return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max); }
 function money(value) { const n = Number(value); return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; }
-function reference(prefix = "ZK") { return \`\${prefix}-\${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}\`; }
+function reference(prefix = "ZK") { return `${prefix}-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`; }
 function stable(value) {
-  if (Array.isArray(value)) return \`[\${value.map(stable).join(",")}]\`;
-  if (value && typeof value === "object") return \`{\${Object.keys(value).sort().map(k => JSON.stringify(k)+":"+stable(value[k])).join(",")}}\`;
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => JSON.stringify(k)+":"+stable(value[k])).join(",")}}`;
   return JSON.stringify(value);
 }
 function validAppSignature(app, body, req) {
@@ -22,8 +22,8 @@ function validAppSignature(app, body, req) {
 }
 async function getApp(appKey) {
   const { rows } = await pool.query(
-    \`SELECT id,name,public_key,secret_key,webhook_url,user_id FROM apps
-     WHERE id::text=$1 OR public_key=$1 LIMIT 1\`, [appKey]
+    `SELECT id,name,public_key,secret_key,webhook_url,user_id FROM apps
+     WHERE id::text=$1 OR public_key=$1 LIMIT 1`, [appKey]
   );
   return rows[0] || null;
 }
@@ -34,7 +34,7 @@ async function sendWebhook(app, payload) {
   try {
     const response = await fetch(app.webhook_url, {
       method: "POST",
-      headers: {"Content-Type":"application/json","User-Agent":"ZakaPro-Monetization/1.0","X-ZakaPro-Signature":\`sha256=\${sig}\`},
+      headers: {"Content-Type":"application/json","User-Agent":"ZakaPro-Monetization/1.0","X-ZakaPro-Signature":`sha256=${sig}`},
       body
     });
     return {code:response.status,delivered:response.ok};
@@ -63,17 +63,17 @@ async function handleMonetization(req,res,app,body) {
     const amount=money(body.amount);
     if(!recipientUserId)return sendJson(res,400,{error:"recipientUserId requis.",code:"recipient_required"});
     if(customerName.length<2)return sendJson(res,400,{error:"Nom client invalide.",code:"validation"});
-    if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(customerEmail))return sendJson(res,400,{error:"Email client invalide.",code:"validation"});
-    if(!/^\\+509\\d{8}$/.test(customerPhone))return sendJson(res,400,{error:"Numéro haïtien invalide.",code:"validation"});
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(customerEmail))return sendJson(res,400,{error:"Email client invalide.",code:"validation"});
+    if(!/^\+509\\d{8}$/.test(customerPhone))return sendJson(res,400,{error:"Numéro haïtien invalide.",code:"validation"});
     if(!Number.isFinite(amount)||amount<=0)return sendJson(res,400,{error:"Montant du don invalide.",code:"validation"});
     const config=await getMonetizationConfig(app.id);
     if(!config.enabled)return sendJson(res,403,{error:"Monétisation désactivée pour cette application.",code:"disabled"});
     const ref=reference("ZKD");
     const {rows}=await pool.query(
-      \`INSERT INTO checkout_payment_intents
+      `INSERT INTO checkout_payment_intents
        (app_id,plan_id,customer_name,customer_email,customer_phone,base_amount,fee_amount,total_amount,delivery,reference,monetization_type,recipient_user_id)
        VALUES($1,NULL,$2,$3,$4,$5,0,$5,FALSE,$6,'donation',$7)
-       RETURNING id,reference,total_amount,expires_at,recipient_user_id\`,
+       RETURNING id,reference,total_amount,expires_at,recipient_user_id`,
       [app.id,customerName,customerEmail,customerPhone,amount,ref,recipientUserId]
     );
     return sendJson(res,201,{ok:true,intent:rows[0],payment:{amount,currency:"HTG",methods:["moncash","natcash"]},recipientUserId});
@@ -112,12 +112,12 @@ async function handleMonetization(req,res,app,body) {
       const appOwner=`merchant:${String(app.user_id)}`;
       if(platform>0) await creditWallet(client,{appId:app.id,userId:appOwner,amount:platform,currency:"HTG",reason:"platform_revenue",reference:eventKey,metadata:{recipientUserId}});
       await client.query(
-        \`INSERT INTO monetization_events(app_id,event_key,event_type,sender_user_id,recipient_user_id,gross_amount,token_amount,creator_pct,creator_amount,platform_amount,currency,reference,metadata)
-         VALUES($1,$2,'gift',$3,$4,$5,$6,$7,$8,$9,'HTG',$2,$10)\`,
+        `INSERT INTO monetization_events(app_id,event_key,event_type,sender_user_id,recipient_user_id,gross_amount,token_amount,creator_pct,creator_amount,platform_amount,currency,reference,metadata)
+         VALUES($1,$2,'gift',$3,$4,$5,$6,$7,$8,$9,'HTG',$2,$10)`,
         [app.id,eventKey,senderUserId,recipientUserId,gross,tokenAmount,pct,creator,platform,JSON.stringify({rate:config.tokenToHtgRate})]
       );
       await client.query("COMMIT");
-      const payload={id:\`evt_\${crypto.randomUUID().replace(/-/g,"").slice(0,20)}\`,event:"monetization.gift.received",createdAt:new Date().toISOString(),app:app.id,appKey:app.public_key,eventKey,senderUserId,recipientUserId,tokenAmount,grossAmount:gross,creatorPct:pct,creatorAmount:creator,platformAmount:platform,currency:"HTG"};
+      const payload={id:`evt_${crypto.randomUUID().replace(/-/g,"").slice(0,20)}`,event:"monetization.gift.received",createdAt:new Date().toISOString(),app:app.id,appKey:app.public_key,eventKey,senderUserId,recipientUserId,tokenAmount,grossAmount:gross,creatorPct:pct,creatorAmount:creator,platformAmount:platform,currency:"HTG"};
       const webhook=await sendWebhook(app,payload);
       return sendJson(res,200,{ok:true,eventKey,wallet:await getUserWallet(app.id,recipientUserId),creatorAmount:creator,platformAmount:platform,webhook:webhook?.delivered?"delivered":app.webhook_url?"failed":"not_configured"});
     }catch(error){
@@ -136,11 +136,11 @@ async function handleMonetization(req,res,app,body) {
       const ref=reference("ZKW");
       await debitWallet(client,{appId:app.id,userId,amount,currency:"HTG",reason:"withdrawal_hold",reference:ref,metadata:{method,destination}});
       const {rows}=await client.query(
-        \`INSERT INTO withdrawal_requests(app_id,user_id,amount,currency,method,destination) VALUES($1,$2,$3,'HTG',$4,$5) RETURNING id,status,amount,currency,method,destination,created_at\`,
+        `INSERT INTO withdrawal_requests(app_id,user_id,amount,currency,method,destination) VALUES($1,$2,$3,'HTG',$4,$5) RETURNING id,status,amount,currency,method,destination,created_at`,
         [app.id,userId,amount,method,destination]
       );
       await client.query("COMMIT");
-      const payload={id:\`evt_\${crypto.randomUUID().replace(/-/g,"").slice(0,20)}\`,event:"withdrawal.requested",createdAt:new Date().toISOString(),app:app.id,appKey:app.public_key,withdrawal:rows[0]};
+      const payload={id:`evt_${crypto.randomUUID().replace(/-/g,"").slice(0,20)}`,event:"withdrawal.requested",createdAt:new Date().toISOString(),app:app.id,appKey:app.public_key,withdrawal:rows[0]};
       const webhook=await sendWebhook(app,payload);
       return sendJson(res,201,{ok:true,withdrawal:rows[0],webhook:webhook?.delivered?"delivered":app.webhook_url?"failed":"not_configured"});
     }catch(error){
@@ -174,7 +174,7 @@ export default async function handler(req,res) {
         );
         return sendJson(res,200,{withdrawals:result.rows});
       }
-      const plans=await pool.query(\`SELECT id,app_id,name,amount,recurrence,delivery,product_type FROM plans WHERE app_id=$1 ORDER BY created_at DESC\`,[app.id]);
+      const plans=await pool.query(`SELECT id,app_id,name,amount,recurrence,delivery,product_type FROM plans WHERE app_id=$1 ORDER BY created_at DESC`,[app.id]);
       const config=await getMonetizationConfig(app.id);
       const recipient=cleanText(req.query?.recipientUserId||"",128);
       const wallet=recipient ? await getUserWallet(app.id,recipient) : null;
@@ -227,12 +227,12 @@ export default async function handler(req,res) {
           const client=await pool.connect();
           try{
             await client.query("BEGIN");
-            if(Number.isFinite(tokenRate)&&tokenRate>0)await client.query(\`UPDATE app_monetization_settings SET token_to_htg_rate=$2,updated_at=now() WHERE app_id=$1\`,[app.id,tokenRate]);
+            if(Number.isFinite(tokenRate)&&tokenRate>0)await client.query(`UPDATE app_monetization_settings SET token_to_htg_rate=$2,updated_at=now() WHERE app_id=$1`,[app.id,tokenRate]);
             if(body.rules&&typeof body.rules==="object"){
               for(const [tier,pctRaw] of Object.entries(body.rules)){
                 const pct=money(pctRaw);
                 if(["standard","intermediate","vip"].includes(tier)&&Number.isFinite(pct)&&pct>=0&&pct<=100)
-                  await client.query(\`INSERT INTO revenue_share_rules(app_id,tier_level,creator_pct) VALUES($1,$2,$3) ON CONFLICT(app_id,tier_level) DO UPDATE SET creator_pct=EXCLUDED.creator_pct,updated_at=now()\`,[app.id,tier,pct]);
+                  await client.query(`INSERT INTO revenue_share_rules(app_id,tier_level,creator_pct) VALUES($1,$2,$3) ON CONFLICT(app_id,tier_level) DO UPDATE SET creator_pct=EXCLUDED.creator_pct,updated_at=now()`,[app.id,tier,pct]);
               }
             }
             await client.query("COMMIT");
@@ -249,29 +249,29 @@ export default async function handler(req,res) {
       const zoneId=cleanText(body.zoneId,128)||null;
       const address=cleanText(body.address,500)||null;
       if(customerName.length<2)return sendJson(res,400,{error:"Nom client invalide.",code:"validation"});
-      if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(customerEmail))return sendJson(res,400,{error:"Email client invalide.",code:"validation"});
-      if(!/^\\+509\\d{8}$/.test(customerPhone))return sendJson(res,400,{error:"Numéro haïtien invalide.",code:"validation"});
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(customerEmail))return sendJson(res,400,{error:"Email client invalide.",code:"validation"});
+      if(!/^\+509\\d{8}$/.test(customerPhone))return sendJson(res,400,{error:"Numéro haïtien invalide.",code:"validation"});
       if(!planId)return sendJson(res,400,{error:"planId requis.",code:"missing_plan_id"});
-      const planResult=await pool.query(\`SELECT id,app_id,name,amount,delivery,product_type FROM plans WHERE id=$1 AND app_id=$2 LIMIT 1\`,[planId,app.id]);
+      const planResult=await pool.query(`SELECT id,app_id,name,amount,delivery,product_type FROM plans WHERE id=$1 AND app_id=$2 LIMIT 1`,[planId,app.id]);
       const plan=planResult.rows[0];
       if(!plan)return sendJson(res,404,{error:"Plan introuvable pour cette application.",code:"plan_not_found"});
       let fee=0;
       if(Boolean(plan.delivery)){
         if(zoneId){
-          const zoneResult=await pool.query(\`SELECT id,name,fee_pct FROM zones WHERE id=$1 AND app_id=$2 LIMIT 1\`,[zoneId,app.id]);
+          const zoneResult=await pool.query(`SELECT id,name,fee_pct FROM zones WHERE id=$1 AND app_id=$2 LIMIT 1`,[zoneId,app.id]);
           const zone=zoneResult.rows[0];if(!zone)return sendJson(res,400,{error:"Zone de livraison invalide.",code:"zone_not_found"});
           fee=Math.round((Number(plan.amount)*Number(zone.fee_pct)/100)*100)/100;
         }else{
-          const zoneCount=await pool.query(\`SELECT count(*)::int AS count FROM zones WHERE app_id=$1\`,[app.id]);
+          const zoneCount=await pool.query(`SELECT count(*)::int AS count FROM zones WHERE app_id=$1`,[app.id]);
           if(zoneCount.rows[0].count>0)return sendJson(res,400,{error:"Une zone de livraison est requise.",code:"zone_required"});
         }
         if(!address||address.length<6)return sendJson(res,400,{error:"Adresse de livraison requise.",code:"address_required"});
       }
       const baseAmount=money(plan.amount),totalAmount=money(baseAmount+fee),ref=reference();
       const {rows}=await pool.query(
-        \`INSERT INTO checkout_payment_intents(app_id,plan_id,customer_name,customer_email,customer_phone,base_amount,fee_amount,total_amount,zone_id,address,delivery,reference,monetization_type)
+        `INSERT INTO checkout_payment_intents(app_id,plan_id,customer_name,customer_email,customer_phone,base_amount,fee_amount,total_amount,zone_id,address,delivery,reference,monetization_type)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         RETURNING id,reference,app_id,plan_id,base_amount,fee_amount,total_amount,delivery,expires_at\`,
+         RETURNING id,reference,app_id,plan_id,base_amount,fee_amount,total_amount,delivery,expires_at`,
         [app.id,plan.id,customerName,customerEmail,customerPhone,baseAmount,fee,totalAmount,zoneId,address,Boolean(plan.delivery),ref,plan.product_type==="token_purchase"?"token_purchase":"subscription"]
       );
       return sendJson(res,201,{ok:true,intent:rows[0],app:{id:app.id,name:app.name,appKey:app.public_key},plan:{id:plan.id,name:plan.name,amount:baseAmount,delivery:Boolean(plan.delivery),productType:plan.product_type},payment:{amount:totalAmount,currency:"HTG",methods:["moncash","natcash"]}});
