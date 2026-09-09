@@ -47,6 +47,7 @@ const TABS = [
   { path: "", label: "Tableau de bord", icon: IconZap },
   { path: "transactions", label: "Transactions", icon: IconSearch },
   { path: "plans", label: "Plans & Hub", icon: IconLoop },
+  { path: "monetization", label: "Monétisation", icon: IconTrend },
   { path: "delivery", label: "Livraison", icon: IconTruck },
   { path: "integration", label: "Intégration", icon: IconCode },
 ] as const;
