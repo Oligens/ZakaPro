@@ -109,7 +109,7 @@ async function handleMonetization(req,res,app,body) {
       if(exists.rowCount){await client.query("COMMIT");return sendJson(res,200,{ok:true,duplicate:true,eventKey});}
       await debitWallet(client,{appId:app.id,userId:senderUserId,amount:tokenAmount,currency:"TOKEN",reason:"gift_sent",reference:eventKey,metadata:{recipientUserId}});
       await creditWallet(client,{appId:app.id,userId:recipientUserId,amount:creator,currency:"HTG",reason:"gift_received",reference:eventKey,metadata:{senderUserId,tokenAmount,pct}});
-      const appOwner=String(app.user_id);
+      const appOwner=`merchant:${String(app.user_id)}`;
       if(platform>0) await creditWallet(client,{appId:app.id,userId:appOwner,amount:platform,currency:"HTG",reason:"platform_revenue",reference:eventKey,metadata:{recipientUserId}});
       await client.query(
         \`INSERT INTO monetization_events(app_id,event_key,event_type,sender_user_id,recipient_user_id,gross_amount,token_amount,creator_pct,creator_amount,platform_amount,currency,reference,metadata)
