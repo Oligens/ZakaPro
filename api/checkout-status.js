@@ -49,9 +49,11 @@ export default async function handler(req, res) {
          p.id AS plan_id,
          p.name AS plan_name,
          p.amount AS plan_amount,
+         cpi.monetization_type,
+         cpi.recipient_user_id,
          a.id AS app_id
        FROM checkout_payment_intents cpi
-       JOIN plans p
+       LEFT JOIN plans p
          ON p.id = cpi.plan_id
         AND p.app_id = cpi.app_id
        JOIN apps a
@@ -87,11 +89,13 @@ export default async function handler(req, res) {
       amount: Number(row.total_amount),
       paidAt: row.paid_at || null,
       expiresAt: row.expires_at || null,
-      plan: {
+      plan: row.plan_id ? {
         id: row.plan_id,
         name: row.plan_name,
         amount: Number(row.plan_amount),
-      },
+      } : null,
+      monetizationType: row.monetization_type || "subscription",
+      recipientUserId: row.recipient_user_id || null,
       appId: row.app_id,
     });
   } catch (error) {
