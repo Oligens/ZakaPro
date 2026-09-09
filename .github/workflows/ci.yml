@@ -21,5 +21,7 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Validate serverless JavaScript
+        run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Production build
         run: npm run build
