@@ -13,14 +13,29 @@ export function sdkSnippet(app:ZakaApp,o:SnippetOpts):string{
 }
 
 export function hubButtonSnippet(app:ZakaApp,plan:ZakaPlan):string{
- const href=`${DEFAULT_API_BASE}/#/hub/${encodeURIComponent(app.id)}/${encodeURIComponent(plan.id)}`;
- return [`<!-- ZakaPro — ${plan.name} — planId: ${plan.id} -->`,`<a href="${href}" target="_blank" rel="noopener noreferrer" data-zakapro-app-key="${app.publicKey}" data-zakapro-plan-id="${plan.id}" style="display:inline-block;background:#EAB308;color:#090D16;border-radius:10px;padding:14px 26px;font-weight:800;font-family:sans-serif;text-decoration:none">`,` Peye ${plan.name} — ${fmtNum(plan.amount)} HTG`,"</a>"].join("\n");
+ return [
+  `<!-- ZakaPro — ${plan.name} — planId: ${plan.id} — modal checkout -->`,
+  '<script src="https://zakapro.vercel.app/sdk/v4/zaka.js"></script>',
+  `<button type="button" id="zakapro-plan-${plan.id}" data-zakapro-app-key="${app.publicKey}" data-zakapro-plan-id="${plan.id}" style="display:inline-block;background:#EAB308;color:#090D16;border:0;border-radius:10px;padding:14px 26px;font-weight:800;font-family:sans-serif;cursor:pointer">Peye ${plan.name} — ${fmtNum(plan.amount)} HTG</button>`,
+  '<script>',
+  `const zaka=ZakaPro.init({appKey: ${js(app.publicKey)}, autoRender:false});`,
+  `document.getElementById("zakapro-plan-${plan.id}").addEventListener("click",()=>zaka.openPlan(${js(plan.id)}));`,
+  '</script>'
+ ].join("\\n");
 }
 
 export function multiPlanButtonsSnippet(app:ZakaApp,plans:ZakaPlan[]):string{
  const active=plans.filter(p=>Number.isFinite(Number(p.amount))&&Number(p.amount)>0);
  if(!active.length)return "<!-- Aucun plan actif pour cette application. -->";
- return [`<!-- ZakaPro — ${app.name} — ${active.length} plan(s) -->`,'<div class="zakapro-plans" data-zakapro-app-key="'+app.publicKey+'">',...active.map(p=>{const href=`${DEFAULT_API_BASE}/#/hub/${encodeURIComponent(app.id)}/${encodeURIComponent(p.id)}`;return `  <a class="zakapro-plan-button" href="${href}" target="_blank" rel="noopener noreferrer" data-zakapro-app-key="${app.publicKey}" data-plan-id="${p.id}" data-amount="${Number(p.amount)}" data-recurrence="${p.recurrence||"unique"}">${p.name} — ${fmtNum(p.amount)} HTG</a>`;}),"</div>","<style>",".zakapro-plans{display:grid;gap:10px}.zakapro-plan-button{display:block;padding:14px 18px;border-radius:10px;background:#EAB308;color:#090D16;text-decoration:none;font:800 14px system-ui,sans-serif;text-align:center}.zakapro-plan-button:hover{filter:brightness(1.06)}","</style>"].join("\n");
+ return [
+  `<!-- ZakaPro — ${app.name} — ${active.length} plan(s) — checkout modal, aucun nouvel onglet -->`,
+  '<script src="https://zakapro.vercel.app/sdk/v4/zaka.js"></script>',
+  '<div id="zakapro-plans"></div>',
+  '<script>',
+  `const zaka=ZakaPro.init({appKey: ${js(app.publicKey)}, container:"#zakapro-plans", methods:["moncash","natcash"]});`,
+  '</script>',
+  '<style>.zakapro-payment-button{display:block;width:100%;margin:10px 0;padding:14px 18px;border:0;border-radius:10px;background:#EAB308;color:#090D16;font:800 14px system-ui,sans-serif;cursor:pointer}</style>'
+ ].join("\\n");
 }
 
 export function generateCurlSnippet(app:{publicKey:string},o:{planId?:string}):string{
