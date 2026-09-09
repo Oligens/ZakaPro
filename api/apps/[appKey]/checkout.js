@@ -163,7 +163,84 @@ export default async function handler(req,res) {
 
     if(req.method==="OPTIONS")return sendJson(res,200,{ok:true});
 
+    if(req.method==="PUT" && String(req.query?.mode||"")==="monetization_settings"){
+      const session=getSession(req);
+      if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
+      if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
+      const body=await readBody(req);
+      const tokenRate=money(body.tokenToHtgRate);
+      if(!Number.isFinite(tokenRate)||tokenRate<=0||tokenRate>1000000)
+        return sendJson(res,400,{error:"Le taux Jeton → HTG est invalide.",code:"invalid_rate"});
+      const inputRules=body.rules&&typeof body.rules==="object"?body.rules:{};
+      const client=await pool.connect();
+      try{
+        await client.query("BEGIN");
+        await client.query(`INSERT INTO app_monetization_settings(app_id,token_to_htg_rate,enabled)
+          VALUES($1,$2,TRUE)
+          ON CONFLICT(app_id) DO UPDATE SET token_to_htg_rate=EXCLUDED.token_to_htg_rate,updated_at=now()`,[app.id,tokenRate]);
+        for(const tier of ["standard","intermediate","vip"]){
+          const pct=money(inputRules[tier]);
+          if(!Number.isFinite(pct)||pct<0||pct>100){
+            await client.query("ROLLBACK");
+            return sendJson(res,400,{error:`Pourcentage invalide pour le palier ${tier}.`,code:"invalid_rule"});
+          }
+          await client.query(`INSERT INTO revenue_share_rules(app_id,tier_level,creator_pct)
+            VALUES($1,$2,$3)
+            ON CONFLICT(app_id,tier_level) DO UPDATE SET creator_pct=EXCLUDED.creator_pct,updated_at=now()`,[app.id,tier,pct]);
+        }
+        await client.query("COMMIT");
+      }catch(error){
+        try{await client.query("ROLLBACK")}catch{}
+        throw error;
+      }finally{client.release()}
+      return sendJson(res,200,{ok:true,app:{id:app.id,name:app.name,appKey:app.public_key},monetization:await getMonetizationConfig(app.id)});
+    }
+
+    if(req.method==="PATCH" && String(req.query?.mode||"")==="withdrawals"){
+      const session=getSession(req);
+      if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
+      if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
+      const body=await readBody(req);
+      const withdrawalId=cleanText(body.withdrawalId,128);
+      const nextStatus=cleanText(body.status,20);
+      const note=cleanText(body.adminNote,500);
+      if(!withdrawalId||!["processing","completed","rejected","cancelled"].includes(nextStatus))
+        return sendJson(res,400,{error:"Demande de retrait ou statut invalide.",code:"validation"});
+      const client=await pool.connect();
+      try{
+        await client.query("BEGIN");
+        const current=await client.query(`SELECT * FROM withdrawal_requests WHERE id::text=$1 AND app_id=$2 FOR UPDATE`,[withdrawalId,app.id]);
+        if(!current.rowCount){await client.query("ROLLBACK");return sendJson(res,404,{error:"Demande de retrait introuvable.",code:"not_found"});}
+        const w=current.rows[0];
+        if(["completed","rejected","cancelled"].includes(w.status)){
+          await client.query("ROLLBACK");
+          return sendJson(res,409,{error:"Cette demande est déjà clôturée.",code:"already_closed"});
+        }
+        if(["rejected","cancelled"].includes(nextStatus)){
+          await creditWallet(client,{appId:app.id,userId:w.user_id,amount:Number(w.amount),currency:w.currency,reason:"withdrawal_refund",reference:`withdrawal-refund:${w.id}`,metadata:{withdrawalId:w.id,status:nextStatus}});
+        }
+        const {rows}=await client.query(
+          `UPDATE withdrawal_requests
+           SET status=$1,admin_note=$2,completed_at=CASE WHEN $1='completed' THEN now() ELSE completed_at END
+           WHERE id=$3
+           RETURNING id,user_id,amount,currency,method,destination,status,admin_note,created_at,completed_at`,
+          [nextStatus,note||null,w.id]
+        );
+        await client.query("COMMIT");
+        return sendJson(res,200,{ok:true,refunded:["rejected","cancelled"].includes(nextStatus),withdrawal:rows[0]});
+      }catch(error){
+        try{await client.query("ROLLBACK")}catch{}
+        throw error;
+      }finally{client.release()}
+    }
+
     if(req.method==="GET"){
+      if(String(req.query?.mode||"")==="monetization_settings"){
+        const session=getSession(req);
+        if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
+        if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
+        return sendJson(res,200,{app:{id:app.id,name:app.name,appKey:app.public_key},monetization:await getMonetizationConfig(app.id)});
+      }
       if(String(req.query?.mode||"")==="withdrawals"){
         const session=getSession(req);
         if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
@@ -173,6 +250,32 @@ export default async function handler(req,res) {
            FROM withdrawal_requests WHERE app_id=$1 ORDER BY created_at DESC LIMIT 100`,[app.id]
         );
         return sendJson(res,200,{withdrawals:result.rows});
+      }
+      if(String(req.query?.mode||"")==="wallets"){
+        const session=getSession(req);
+        if(!session)return sendJson(res,401,{error:"Authentification requise.",code:"unauthorized"});
+        if(String(app.user_id)!==String(session.sub))return sendJson(res,403,{error:"Application non autorisée.",code:"forbidden"});
+        const [wallets,totals,volume]=await Promise.all([
+          pool.query(`SELECT app_id,user_id,balance_real,balance_tokens,tier_level,updated_at
+            FROM user_wallets WHERE app_id=$1 ORDER BY updated_at DESC,user_id ASC`,[app.id]),
+          pool.query(`SELECT COALESCE(SUM(balance_real),0) total_real,COALESCE(SUM(balance_tokens),0) total_tokens
+            FROM user_wallets WHERE app_id=$1`,[app.id]),
+          pool.query(`SELECT COUNT(*)::int transaction_count,
+            COALESCE(SUM(ABS(delta)) FILTER(WHERE currency='HTG'),0) volume_htg,
+            COALESCE(SUM(ABS(delta)) FILTER(WHERE currency='TOKEN'),0) volume_tokens
+            FROM wallet_ledger WHERE app_id=$1`,[app.id])
+        ]);
+        return sendJson(res,200,{
+          app:{id:app.id,name:app.name,appKey:app.public_key},
+          wallets:wallets.rows.map(w=>({appId:w.app_id,userId:w.user_id,balanceReal:Number(w.balance_real),balanceTokens:Number(w.balance_tokens),tierLevel:w.tier_level,updatedAt:w.updated_at})),
+          totals:{
+            totalReal:Number(totals.rows[0]?.total_real||0),
+            totalTokens:Number(totals.rows[0]?.total_tokens||0),
+            transactionCount:Number(volume.rows[0]?.transaction_count||0),
+            volumeHtg:Number(volume.rows[0]?.volume_htg||0),
+            volumeTokens:Number(volume.rows[0]?.volume_tokens||0)
+          }
+        });
       }
       const plans=await pool.query(`SELECT id,app_id,name,amount,recurrence,delivery,product_type FROM plans WHERE app_id=$1 ORDER BY created_at DESC`,[app.id]);
       const config=await getMonetizationConfig(app.id);
