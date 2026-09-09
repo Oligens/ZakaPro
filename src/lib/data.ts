@@ -61,6 +61,8 @@ export const RECURRENCE_LABEL: Record<Recurrence, string> = {
   unique: "Paiement unique",
 };
 
+export type PlanProductType = "subscription" | "token_purchase";
+
 export interface ZakaPlan {
   id: string;
   appId: string;
@@ -68,6 +70,7 @@ export interface ZakaPlan {
   amount: number;            // HTG
   recurrence: Recurrence;
   delivery: boolean;         // true → livraison physique requise
+  productType: PlanProductType;
   createdAt: number;
 }
 
