@@ -30,7 +30,7 @@
     {
       "src": "^/api/apps/([^/]+)/checkout$",
       "methods": ["POST"],
-      "dest": "/api/apps/$1/payment-intent"
+      "dest": "/api/apps/$1/payment-intent?appKey=$1"
     }
   ],
   "rewrites": [
