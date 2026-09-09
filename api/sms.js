@@ -256,7 +256,7 @@ export default async function handler(req, res) {
     const checkout = await client.query(
       `SELECT cpi.*, p.name AS plan_name, a.user_id AS app_user_id
        FROM checkout_payment_intents cpi
-       JOIN plans p ON p.id = cpi.plan_id AND p.app_id = cpi.app_id
+       LEFT JOIN plans p ON p.id = cpi.plan_id AND p.app_id = cpi.app_id
        JOIN apps a ON a.id = cpi.app_id
        WHERE cpi.reference = $1
          AND cpi.customer_phone = $2
