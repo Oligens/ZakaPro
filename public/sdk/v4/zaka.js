@@ -25,7 +25,7 @@
   function ZakaProClient(options){
     options=options||{}; this.appKey=String(options.appKey||"").trim(); this.apiBase=String(options.apiBase||DEFAULT_API_BASE).replace(/\/$/,"");
     this.container=options.container||"#zakapro-plans"; this.methods=Array.isArray(options.methods)&&options.methods.length?options.methods:["moncash","natcash"];
-    this.buttonClass=String(options.buttonClass||"zakapro-payment-button"); this.plans=[]; this.app=null; this.activeModal=null; injectStyles();
+    this.buttonClass=String(options.buttonClass||"zakapro-payment-button"); this.onPaymentConfirmed=typeof options.onPaymentConfirmed==="function"?options.onPaymentConfirmed:null; this.plans=[]; this.app=null; this.activeModal=null; injectStyles();
   }
   ZakaProClient.prototype.plansUrl=function(){return this.apiBase+"/api/apps/"+encodeURIComponent(this.appKey)+"/plans";};
   ZakaProClient.prototype.loadPlans=async function(){
@@ -92,7 +92,7 @@
     var poll=async function(){if(stopped)return;try{var r=await fetch(self.apiBase+"/api/apps/"+encodeURIComponent(self.appKey)+"/checkout-status?reference="+encodeURIComponent(reference),{headers:{Accept:"application/json"},credentials:"omit",cache:"no-store"});
       var b=await r.json();if(!r.ok)throw new Error(b.error||"Impossible de vérifier le paiement.");
       if(b.status==="paid"){stopped=true;state.loading=false;body.replaceChildren();var ok=document.createElement("div");ok.className="zakapro-info";
-        ok.innerHTML="<div class=zakapro-success>✓ Paiement confirmé</div><p>"+esc(b.plan.name)+" est validé pour <b>"+money(b.amount)+" HTG</b>.</p><p class=zakapro-muted>Le webhook de confirmation a été déclenché côté ZakaPro.</p>";body.appendChild(ok);setTimeout(function(){self.closeModal();},2200);return;}
+        ok.innerHTML="<div class=zakapro-success>✓ Paiement confirmé</div><p>"+esc(b.plan.name)+" est validé pour <b>"+money(b.amount)+" HTG</b>.</p><p class=zakapro-muted>Le webhook de confirmation a été déclenché côté ZakaPro.</p>";body.appendChild(ok);var detail={reference:b.reference,plan:b.plan,amount:b.amount,appId:b.appId};try{global.dispatchEvent(new CustomEvent("zakapro:payment-confirmed",{detail:detail}));}catch(_){}if(self.onPaymentConfirmed){try{self.onPaymentConfirmed(detail);}catch(e){console.error("[ZakaPro:onPaymentConfirmed]",e);}}setTimeout(function(){self.closeModal();},2200);return;}
       if(b.status==="rejected"||b.status==="expired"){stopped=true;state.loading=false;state.error=b.status==="expired"?"La demande de paiement a expiré.":"Le paiement a été rejeté.";self.renderCheckoutForm(body,plan);return;}
     }catch(e){console.warn("[ZakaPro:checkout-poll]",e);}timer=setTimeout(poll,3000);};poll();
     if(this.activeModal)this.activeModal.cleanup=function(){stopped=true;if(timer)clearTimeout(timer);};
