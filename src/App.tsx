@@ -16,6 +16,7 @@ import { SmsListenerView, DeliveriesView } from "./views/Operations";
 import { PlansGlobalView } from "./views/ConfigViews";
 import EnhancedSettingsView from "./views/EnhancedSettingsView";
 import PublicHub from "./views/PublicHub";
+import MonetizationPage from "./views/MonetizationPage";
 import type { ReactNode } from "react";
 
 function BootSkeleton() {
@@ -33,7 +34,8 @@ function Shell() {
   const zaka = useZaka();
   if (zaka.isLoading) return <BootSkeleton />;
   if (zaka.loadError) return <LoadError message={zaka.loadError} onRetry={zaka.retryLoad} />;
-  return <div className="min-h-screen"><Header /><main className="mx-auto max-w-6xl px-4 pb-32 pt-5"><Routes><Route path="/" element={<Navigate to="/apps" replace />} /><Route path="/apps" element={<AppsView />} /><Route path="/plans" element={<PlansGlobalView />} /><Route path="/sms-listener" element={<SmsListenerView />} /><Route path="/deliveries" element={<DeliveriesView />} /><Route path="/settings" element={<EnhancedSettingsView />} /><Route path="/app/:appId" element={<AppShell />}><Route index element={<AppDashboard />} /><Route path="transactions" element={<AppTransactions />} /><Route path="plans" element={<AppPlans />} /><Route path="delivery" element={<AppDelivery />} /><Route path="integration" element={<AppIntegration />} /></Route></Routes></main><BottomNav /><Toasts toasts={zaka.toasts} onDismiss={zaka.dismissToast} /><PersistenceGuard /></div>;
+  return <div className="min-h-screen"><Header /><main className="mx-auto max-w-6xl px-4 pb-32 pt-5"><Routes><Route path="/" element={<Navigate to="/apps" replace />} /><Route path="/apps" element={<AppsView />} /><Route path="/plans" element={<PlansGlobalView />} /><Route path="/sms-listener" element={<SmsListenerView />} /><Route path="/deliveries" element={<DeliveriesView />} /><Route path="/settings" element={<EnhancedSettingsView />} /><Route path="/app/:appId" element={<AppShell />}><Route index element={<AppDashboard />} /><Route path="transactions" element={<AppTransactions />} /><Route path="plans" element={<AppPlans />} /><Route path="delivery" element={<AppDelivery />} /><Route path="integration" element={<AppIntegration />} />
+      <Route path="monetization" element={<MonetizationPage />} /></Route></Routes></main><BottomNav /><Toasts toasts={zaka.toasts} onDismiss={zaka.dismissToast} /><PersistenceGuard /></div>;
 }
 
 function Router() {
