@@ -34,6 +34,7 @@ async function syncCollection(client,userId,key,rows){
 }
 
 export default async function handler(req,res){
+  if(dbReady()) await pool.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS product_type TEXT NOT NULL DEFAULT 'subscription'`).catch(()=>{});
   const session=requireAuth(req,res);if(!session)return;
   if(!dbReady())return sendJson(res,503,{error:"Base de données non configurée.",code:"config"});
   const userId=session.sub;
