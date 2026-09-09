@@ -21,7 +21,7 @@ export function hubButtonSnippet(app:ZakaApp,plan:ZakaPlan):string{
   `const zaka=ZakaPro.init({appKey: ${js(app.publicKey)}, autoRender:false});`,
   `document.getElementById("zakapro-plan-${plan.id}").addEventListener("click",()=>zaka.openPlan(${js(plan.id)}));`,
   '</script>'
- ].join("\\n");
+ ].join("\n");
 }
 
 export function multiPlanButtonsSnippet(app:ZakaApp,plans:ZakaPlan[]):string{
@@ -35,7 +35,7 @@ export function multiPlanButtonsSnippet(app:ZakaApp,plans:ZakaPlan[]):string{
   `const zaka=ZakaPro.init({appKey: ${js(app.publicKey)}, container:"#zakapro-plans", methods:["moncash","natcash"]});`,
   '</script>',
   '<style>.zakapro-payment-button{display:block;width:100%;margin:10px 0;padding:14px 18px;border:0;border-radius:10px;background:#EAB308;color:#090D16;font:800 14px system-ui,sans-serif;cursor:pointer}</style>'
- ].join("\\n");
+ ].join("\n");
 }
 
 export function generateCurlSnippet(app:{publicKey:string},o:{planId?:string}):string{
@@ -63,7 +63,7 @@ export function webhookSnippet(app:ZakaApp):string{
  '  const a=Buffer.from(received); const b=Buffer.from(expected);',
  '  if (a.length!==b.length || !crypto.timingSafeEqual(a,b)) return res.status(401).json({error:"Signature invalide"});',
  '  let event; try { event=JSON.parse(req.body.toString("utf8")); } catch { return res.status(400).json({error:"JSON invalide"}); }',
- '  if (event.event === "subscription.activated") console.log("Paiement confirmé", event.reference, event.planId, event.plan, event.amount, event.method);',
+ '  if (event.event === "subscription.activated") console.log("Paiement confirmé", event.reference, event.plan?.id, event.plan?.name, event.amount, event.method);',
  '  return res.status(200).json({received:true});',
  '});',
  `// appKey attendu: ${app.publicKey}`
