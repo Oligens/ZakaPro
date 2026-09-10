@@ -23,5 +23,16 @@ jobs:
         run: npm run typecheck
       - name: Validate serverless JavaScript
         run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Enforce Vercel Hobby function limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(find api -type f -name '*.js' ! -name '_*' ! -name '.*' ! -name '*.d.ts' | wc -l | tr -d ' ')
+          echo "Deployable Vercel Functions: ${count}"
+          if [ "$count" -gt 12 ]; then
+            echo "ERROR: Vercel Hobby supports at most 12 serverless functions. Consolidate API routes before deploying."
+            find api -type f -name '*.js' ! -name '_*' ! -name '.*' ! -name '*.d.ts' | sort
+            exit 1
+          fi
       - name: Production build
         run: npm run build

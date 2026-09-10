@@ -27,6 +27,7 @@
     ] }
   ],
   "rewrites": [
+    { "source": "/api/apps/:appId/payment-intent", "destination": "/api/apps/:appId/checkout" },
     { "source": "/api/apps/:appId/monetization/settings", "destination": "/api/apps/:appId/checkout?mode=monetization_settings" },
     { "source": "/api/apps/:appId/wallets", "destination": "/api/apps/:appId/checkout?mode=wallets" },
     { "source": "/api/apps/:appId/withdrawals", "destination": "/api/apps/:appId/checkout?mode=withdrawals" },
