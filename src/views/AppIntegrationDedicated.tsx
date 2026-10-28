@@ -5,11 +5,11 @@ import type { Source, ZakaApp } from "../lib/data";
 import { fmtNum } from "../lib/data";
 import { CopyBtn, Reveal, SectionHead, inputCls, labelCls } from "../components/ui";
 import { IconCheck, IconEye, IconRefresh, IconZap } from "../components/icons";
-import { curlSnippet, listenerSnippet, monetizationWidgetSnippet, multiPlanButtonsSnippet, sdkSnippet, webhookSnippet } from "../lib/generator";
+import { completeIntegrationPrompt, curlSnippet, listenerSnippet, monetizationWidgetSnippet, multiPlanButtonsSnippet, sdkSnippet, webhookSnippet } from "../lib/generator";
 import { AppWebhookConfig } from "../components/AppWebhookConfig";
 import { MonetizationSettings } from "../components/MonetizationSettings";
 
-type SnippetTab = "sdk" | "buttons" | "hub" | "curl" | "monetization" | "webhook" | "listener";
+type SnippetTab = "sdk" | "buttons" | "hub" | "curl" | "monetization" | "webhook" | "listener" | "prompt";
 const SNIPPET_TABS: Array<{ key: SnippetTab; label: string }> = [
   { key: "sdk", label: "SDK Web (tous les plans)" },
   { key: "buttons", label: "Boutons multi-plans" },
@@ -18,6 +18,7 @@ const SNIPPET_TABS: Array<{ key: SnippetTab; label: string }> = [
   { key: "monetization", label: "Monétisation" },
   { key: "webhook", label: "Webhook (Node)" },
   { key: "listener", label: "Listener Android" },
+  { key: "prompt", label: "✨ Prompt complet" },
 ];
 
 export function AppIntegration() {
@@ -45,6 +46,7 @@ export function AppIntegration() {
     monetization: monetizationWidgetSnippet(app),
     webhook: webhookSnippet(app),
     listener: listenerSnippet(app),
+    prompt: completeIntegrationPrompt(app, appPlans, { webhook: appWebhookUrl, methods }),
   };
 
   return <div className="space-y-4">
@@ -66,7 +68,7 @@ export function AppIntegration() {
         <MonetizationSettings appKey={app.publicKey}/>
         <div className="rounded-xl border border-edge bg-panel p-4 shadow-card"><SectionHead title="Dernières livraisons webhook" sub="Signées HMAC-SHA256"/>{zaka.webhookDeliveries.length===0?<p className="py-4 text-center text-xs text-fog2">Aucun webhook envoyé pour l'instant.</p>:<ul className="space-y-1.5">{zaka.webhookDeliveries.slice(0,4).map(d=><li key={d.id} className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2 font-mono text-[10.5px]"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{background:d.status==="delivered"?"#22C55E":"#EC4899"}}/><span className="truncate text-fog">{d.event}</span><span className="ml-auto font-bold">{d.httpCode}</span><span className="text-fog2">{d.latencyMs} ms</span></li>)}</ul>}</div>
       </div></Reveal>
-      <Reveal delay={80} className="lg:col-span-3"><div className="flex h-full min-h-[420px] flex-col rounded-xl border border-edge bg-panel shadow-card"><div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2.5">{SNIPPET_TABS.map(t=><button key={t.key} type="button" onClick={()=>setTab(t.key)} className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 font-mono text-[11px] font-bold ${tab===t.key?"bg-gold/14 text-gold":"text-fog hover:bg-panel2 hover:text-snow"}`}>{t.label}</button>)}<div className="ml-auto pl-2"><CopyBtn text={snippets[tab]} label="Copier le code"/></div></div><div className="code-scroll flex-1 overflow-auto bg-abyss/70 p-4"><pre key={tab+app.id+appWebhookUrl+selectedPlan?.id+appPlans.length} className="animate-rise font-mono text-[11.5px] leading-[1.75] text-[#b8c4d6]">{snippets[tab]}</pre></div><div className="flex items-center justify-between border-t border-edge px-4 py-3"><p className="text-[10.5px] font-semibold text-fog2">Intégration : <span className="font-mono text-fog">app_key → plans[] → planId → checkout → SMS → webhook</span></p><span className="rounded-md bg-mint/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-mint">Multi-plans</span></div></div></Reveal>
+      <Reveal delay={80} className="lg:col-span-3"><div className="flex h-full min-h-[420px] flex-col rounded-xl border border-edge bg-panel shadow-card"><div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2.5">{SNIPPET_TABS.map(t=><button key={t.key} type="button" onClick={()=>setTab(t.key)} className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 font-mono text-[11px] font-bold ${tab===t.key?"bg-gold/14 text-gold":t.key==="prompt"?"bg-mint/10 text-mint hover:bg-mint/15":"text-fog hover:bg-panel2 hover:text-snow"}`}>{t.label}</button>)}<div className="ml-auto pl-2"><CopyBtn text={snippets[tab]} label={tab === "prompt" ? "Copier le prompt complet" : "Copier le code"}/></div></div>{tab === "prompt" && <div className="border-b border-edge bg-gold/5 px-4 py-3"><p className="text-xs font-bold text-gold">✨ Prompt prêt à copier</p><p className="mt-1 text-[11px] leading-relaxed text-fog2">ZakaPro vient de fusionner automatiquement la configuration de cette application, ses plans et tous les codes d'intégration générés. La clé secrète n'est jamais incluse dans le prompt.</p></div>}<div className="code-scroll flex-1 overflow-auto bg-abyss/70 p-4"><pre key={tab+app.id+appWebhookUrl+selectedPlan?.id+appPlans.length} className="animate-rise whitespace-pre-wrap break-words font-mono text-[11.5px] leading-[1.75] text-[#b8c4d6]">{snippets[tab]}</pre></div><div className="flex items-center justify-between border-t border-edge px-4 py-3"><p className="text-[10.5px] font-semibold text-fog2">{tab === "prompt" ? <><span className="font-mono text-fog">Configuration → code → prompt complet → copier</span></> : <>Intégration : <span className="font-mono text-fog">app_key → plans[] → planId → checkout → SMS → webhook</span></>}</p><span className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${tab === "prompt" ? "bg-mint/10 text-mint" : "bg-mint/10 text-mint"}`}>{tab === "prompt" ? "Prêt à coller" : "Multi-plans"}</span></div></div></Reveal>
     </div>
   </div>;
 }
