@@ -25,7 +25,9 @@ export function AppIntegration() {
   const app = useOutletContext<ZakaApp>();
   const zaka = useZaka();
   const [showSecret, setShowSecret] = useState(false);
-  const [tab, setTab] = useState<SnippetTab>("sdk");
+  // Après l'enregistrement/configuration d'une application, le prompt complet est
+  // immédiatement affiché afin que l'utilisateur n'ait pas à le chercher dans les onglets.
+  const [tab, setTab] = useState<SnippetTab>("prompt");
   const [methods, setMethods] = useState<Source[]>(["moncash", "natcash"]);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [appWebhookUrl, setAppWebhookUrl] = useState(app.webhookUrl ?? "");
