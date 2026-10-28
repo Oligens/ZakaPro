@@ -99,7 +99,6 @@ export function listenerSnippet(app:ZakaApp):string{
 export async function copyText(text:string):Promise<boolean>{try{await navigator.clipboard.writeText(text);return true}catch{try{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);return true}catch{return false}}}
 export const ZAKAPRO_SDK_URL=DEFAULT_SDK_URL;
 
-
 export function monetizationWidgetSnippet(app: ZakaApp, recipientUserId = "USER_TARGET_ID"): string {
   return [
     `<!-- ZakaPro — Widget de monétisation pour ${app.name} -->`,
@@ -113,5 +112,61 @@ export function monetizationWidgetSnippet(app: ZakaApp, recipientUserId = "USER_
     '  el.querySelector("button").addEventListener("click",function(){widget.open();});',
     '});',
     '</script>',
-  ].join("\\n");
+  ].join("\n");
+}
+
+/**
+ * Construit automatiquement un prompt unique prêt à coller dans une IA.
+ * Il contient la configuration de l'application et TOUS les codes générés
+ * par l'onglet Intégration. La clé secrète n'est volontairement jamais incluse.
+ */
+export function completeIntegrationPrompt(
+  app: ZakaApp,
+  plans: ZakaPlan[],
+  options: { webhook: string; methods: Source[]; apiBase?: string }
+): string {
+  const selectedPlan = plans[0];
+  const snippets: Array<[string, string]> = [
+    ["SDK Web — tous les plans", sdkSnippet(app, { webhook: options.webhook, methods: options.methods, planId: selectedPlan?.id, planName: selectedPlan?.name, amount: selectedPlan?.amount, apiBase: options.apiBase })],
+    ["Boutons multi-plans", multiPlanButtonsSnippet(app, plans)],
+    ["cURL", curlSnippet(app, { webhook: options.webhook, methods: options.methods, planId: selectedPlan?.id })],
+    ["Monétisation", monetizationWidgetSnippet(app)],
+    ["Webhook Node.js", webhookSnippet(app)],
+    ["Listener Android", listenerSnippet(app)],
+  ];
+
+  const planTable = plans.length
+    ? plans.map((p) => `- ${p.name} | ID: ${p.id} | ${fmtNum(p.amount)} HTG | ${p.recurrence} | livraison: ${p.delivery ? "oui" : "non"} | type: ${p.productType}`).join("\n")
+    : "- Aucun plan configuré";
+
+  return [
+    `# PROMPT D'INTÉGRATION ZAKAPRO — ${app.name}`,
+    "",
+    "Tu es un développeur senior. Intègre ZakaPro dans mon application existante sans casser son architecture, ses routes, ses API, son authentification ou sa logique métier.",
+    "",
+    "## OBJECTIF",
+    "Implémenter le paiement ZakaPro avec les plans configurés, le checkout, les méthodes Mobile Money sélectionnées, le webhook signé et, si nécessaire, le listener Android. Utilise les codes ci-dessous comme source de vérité et adapte uniquement ce qui est nécessaire au framework de mon projet.",
+    "",
+    "## CONFIGURATION",
+    `- Application: ${app.name}`,
+    `- App key publique: ${app.publicKey}`,
+    `- API base: ${options.apiBase || DEFAULT_API_BASE}`,
+    `- Webhook configuré: ${options.webhook || "non configuré"}`,
+    `- Méthodes: ${options.methods.length ? options.methods.join(", ") : "moncash, natcash"}`,
+    "",
+    "## PLANS CONFIGURÉS",
+    planTable,
+    "",
+    "## RÈGLES DE SÉCURITÉ",
+    "- Ne jamais mettre la clé secrète ZakaPro dans le navigateur, une application mobile ou un dépôt public.",
+    "- La clé publique peut être exposée côté client.",
+    "- Vérifier les événements webhook avec HMAC-SHA256 avant de confirmer un paiement.",
+    "- Ne jamais considérer un paiement comme confirmé uniquement à partir du montant fourni par le client.",
+    "- Conserver les secrets dans les variables d'environnement du serveur.",
+    "",
+    "## CODES GÉNÉRÉS PAR ZAKAPRO",
+    ...snippets.flatMap(([title, code]) => [`### ${title}`, "```", code, "```", ""]),
+    "## LIVRABLE ATTENDU",
+    "Retourne les fichiers à créer/modifier, les dépendances nécessaires, les variables d'environnement à configurer et les étapes de test. Ne supprime aucune fonctionnalité existante. Vérifie les erreurs TypeScript/JavaScript et les incompatibilités avec le framework avant de considérer l'intégration terminée.",
+  ].join("\n");
 }
