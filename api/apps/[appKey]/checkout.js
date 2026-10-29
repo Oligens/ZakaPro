@@ -95,6 +95,9 @@ async function handleSubscriptionCheckout(req, res, app, body) {
   return sendJson(res, 201, {
     success: true,
     ok: true,
+    // Include the merchant application identity in the checkout contract so
+    // integrators can verify this intent belongs to the expected ZakaPro app.
+    appId: String(app.id),
     intent: {
       id: rows[0].id,
       reference: rows[0].reference,
